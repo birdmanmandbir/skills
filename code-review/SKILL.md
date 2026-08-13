@@ -84,13 +84,27 @@ If the spec is missing, skip the Spec sub-agent and note this in the final repor
 
 Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Keep the axes separate so neither masks the other.
 
-Then add `## Merge readiness` and answer: **How far is this version from merge?** Use one of these verdicts:
+Then add `## Merge readiness` and answer: **How far is this version from merge?** Use the user's language and this structure:
 
-- **Ready** — no blocking findings and the relevant checks pass.
-- **Close** — only bounded fixes remain; list the blockers and the smallest path to ready.
-- **Not ready** — core behaviour is missing, or correctness, security, data, or unresolved design risk remains; name the blocking areas.
+```text
+My assessment
 
-State the expected scope of the remaining work (for example, “one small fix-and-verify pass” or “multiple substantial changes”), not a time estimate. A judgement-call smell is not automatically a merge blocker; explain when one affects the verdict.
+- Merge blockers: <count and concise severity/behaviour summary, or none>
+- Recommended reinforcement: <valuable non-blocking work, especially representative tests, or none>
+- Estimated effort: <one focused iteration / several focused iterations / substantial work>
+- Path to merge: <what to fix and the exact repository checks/builds to rerun before PR or merge>
+
+Approximately <range>% complete.
+```
+
+Keep blockers separate from recommended reinforcement. Name repository-specific verification commands when they are discoverable, rather than writing a generic “run tests.” Use a narrow percentage range, normally five points, as a directional completion estimate rather than false precision. Calibrate it from remaining risk and work:
+
+- **95–100%** — ready or only final verification remains.
+- **85–95%** — a focused iteration of small fixes or representative tests remains.
+- **70–85%** — several bounded changes remain.
+- **Below 70%** — core behaviour or substantial correctness, security, data, or design work remains.
+
+A judgement-call smell is not automatically a blocker; place it under recommended reinforcement unless it materially affects safe or correct merging.
 
 End with a one-line count of findings per axis and the worst issue within each axis, if any.
 

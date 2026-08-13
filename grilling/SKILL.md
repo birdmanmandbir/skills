@@ -17,7 +17,7 @@ For every agent-owned choice, use the simplest option consistent with the user's
 
 ## Questions
 
-Sort eligible questions by ascending confidence and ask at most five in the first round. Format each one as:
+Sort eligible questions by ascending confidence and ask at most five per round. Format each one as:
 
 ```
 ❓ **Q1 — <title>** (<confidence>% confidence): <focused question and relevant choices>
@@ -25,6 +25,6 @@ Sort eligible questions by ascending confidence and ask at most five in the firs
 ➡️ **Recommendation:** <recommended answer and brief reason>
 ```
 
-Ask a second and final round only when the first-round answers reveal a new qualifying user-facing decision that could not have been identified earlier. Otherwise stop. If no question qualifies, say so and present the assumptions you selected.
+After each answer, recompute the open decisions. Continue with another round whenever the answer reveals a new qualifying user-facing decision; there is no fixed round limit. Stop when no question qualifies, then present the assumptions you selected.
 
 Finish with a concise shared-understanding summary: user decisions, agent-owned assumptions, and any explicitly deferred point. Do not begin implementation unless the user asked the session to continue into implementation.
