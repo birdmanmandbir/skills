@@ -1,0 +1,4 @@
+interface:
+  display_name: "Clash Config Maintenance"
+  short_description: "Maintain Clash Verge and Mihomo routing safely"
+  default_prompt: "Use $clash-config-maintenance to diagnose and safely update this Clash Verge or Mihomo configuration."

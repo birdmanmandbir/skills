@@ -1,0 +1,4 @@
+interface:
+  display_name: "Codex Image Extract"
+  short_description: "Extract generated images from Codex session logs."
+  default_prompt: "Use $codex-image-extract to extract generated images from a Codex rollout JSONL and save them as PNG files."

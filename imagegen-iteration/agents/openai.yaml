@@ -1,0 +1,4 @@
+interface:
+  display_name: "Imagegen Iteration"
+  short_description: "Guide image edits with references."
+  default_prompt: "Use $imagegen-iteration to guide an iterative image-generation session with references, critique, and targeted revisions."
