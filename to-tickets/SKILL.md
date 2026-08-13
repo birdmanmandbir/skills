@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # To Tickets
 
-Break a plan, spec, or conversation into a set of **tickets** — tracer-bullet vertical slices, each declaring the tickets that **block** it.
+Break a plan, spec, or conversation into a set of **tickets** — tracer-bullet vertical slices, each declaring the tickets that **block** it. When the source is a spec, every ticket belongs to that spec's single PR; tickets are execution units on one feature branch, not PR boundaries.
 
 Use the project-local Markdown tracker exclusively. Do NOT run `/setup-matt-pocock-skills` and do NOT create or update remote tracker issues. Choose a concise feature slug from the work, then write one ticket per file under `.scratch/<feature-slug>/issues/<NN>-<slug>.md`, numbered from `01` in dependency order. Record dependencies as `Blocked by:` and use `Status: ready-for-agent` for newly published tickets.
 
@@ -20,7 +20,7 @@ Work from whatever is already in the conversation context. If the user passes a 
 
 If you have not already explored the codebase, do so to understand the current state of the code. Ticket titles and descriptions should use the project's domain glossary vocabulary, and respect ADRs in the area you're touching.
 
-Look for opportunities to prefactor the code to make the implementation easier. "Make the change easy, then make the easy change."
+Prefactor only when it directly unlocks the requested slice. Fold it into that ticket when feasible rather than creating preparatory architecture work.
 
 ### 3. Draft vertical slices
 
@@ -31,13 +31,13 @@ Break the work into **tracer bullet** tickets.
 - Each slice cuts a narrow but COMPLETE path through every layer (schema, API, UI, tests) — vertical, NOT a horizontal slice of one layer
 - A completed slice is demoable or verifiable on its own
 - Each slice is sized to fit in a single fresh context window
-- Any prefactoring should be done first
+- Any necessary prefactoring is the minimum needed to unlock a requested slice
 
 </vertical-slice-rules>
 
 Give each ticket its **blocking edges** — the other tickets that must complete before it can start. A ticket with no blockers can start immediately.
 
-**Wide refactors are the exception to vertical slicing.** A **wide refactor** is one mechanical change — rename a column, retype a shared symbol — whose **blast radius** fans across the whole codebase, so a single edit breaks thousands of call sites at once and no vertical slice can land green. Don't force it into a tracer bullet; sequence it as **expand–contract**. First expand: add the new form beside the old so nothing breaks. Then migrate the call sites over in batches sized by blast radius (per package, per directory), each batch its own ticket blocked by the expand, keeping CI green batch to batch because the old form still exists. Finally contract: delete the old form once no caller remains, in a ticket blocked by every migrate batch. When even the batches can't stay green alone, keep the sequence but let them share an integration branch that all block a final integrate-and-verify ticket — green is promised only there.
+Treat a single monorepo as one atomic change boundary. For a cross-cutting mechanical edit, prefer one ticket or independently green end-to-end slices. Introduce temporary old/new forms only when there is evidence of an external consumer or a real multi-deployment boundary that cannot change atomically.
 
 ### 4. Quiz the user
 
@@ -57,7 +57,7 @@ Iterate until the user approves the breakdown.
 
 ### 5. Publish the tickets as local Markdown
 
-Write the approved tickets under `.scratch/<feature-slug>/issues/`, one file per ticket and never a combined ticket file. Number files from `01` in dependency order (blockers first). Each file's `Blocked by:` lists the ticket numbers/titles it depends on and its `Status:` starts as `ready-for-agent`.
+Write the approved tickets under `.scratch/<feature-slug>/issues/`, one file per ticket and never a combined ticket file. Number files from `01` in dependency order (blockers first). Each file's `Blocked by:` lists the ticket numbers/titles it depends on and its `Status:` starts as `ready-for-agent`. Keep all tickets for one spec on the same feature branch for one PR.
 
 Work the **frontier**: any ticket whose blockers are all done. For a purely linear chain that means top to bottom.
 

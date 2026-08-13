@@ -1,22 +1,30 @@
 ---
 name: grilling
-description: Grill the user relentlessly about a plan, decision, or idea. Use when the user wants to stress-test their thinking, or uses any 'grill' trigger phrases.
+description: Stress-test a plan, decision, or idea by asking only the low-confidence user-facing questions that need human judgement. Use when the user asks to grill or challenge their thinking.
 ---
 
-Interview the user relentlessly until you reach a shared understanding. Map this as a **design tree**: every decision branches into the decisions that hang off it.
+Stress-test the work, but spend the user's attention only where their judgement can change the experience.
 
-Work the tree in **rounds**. The **frontier** is every decision whose prerequisites are already settled — the questions you can ask _now_ without guessing at answers you haven't heard yet. Ask the whole frontier in one round: number each question and give your recommended answer. Then wait for the user's answers before the next round.
+## Decision triage
 
-Each question should be formatted like so:
+Build the decision tree internally. Find environmental facts yourself, then assign each open decision a confidence score from 0–100.
+
+- Decide without asking when confidence is at least 70, the answer is obvious from context, or the choice is primarily technical.
+- Technical implementation, error classification, locking details, platform differences, and test strategy are agent-owned unless they create a meaningful user-visible tradeoff.
+- Ask only when confidence is below 70 **and** the decision materially affects user-visible behaviour, product scope, workflow, or an irreversible preference.
+
+For every agent-owned choice, use the simplest option consistent with the user's goals. Do not turn those choices into confirmation questions.
+
+## Questions
+
+Sort eligible questions by ascending confidence and ask at most five in the first round. Format each one as:
 
 ```
-❓ **Q1** - **<question title>**: <question body, might be multiple paragraphs, including multiple choices>
+❓ **Q1 — <title>** (<confidence>% confidence): <focused question and relevant choices>
 
-➡️ <your recommended answer>
+➡️ **Recommendation:** <recommended answer and brief reason>
 ```
 
-Each round the user answers reshapes the tree — settled decisions push the frontier outward and unblock questions that depended on them. Recompute the frontier and ask the next round. A question whose answer depends on another question still open in this round belongs to a _later_ round, not this one.
+Ask a second and final round only when the first-round answers reveal a new qualifying user-facing decision that could not have been identified earlier. Otherwise stop. If no question qualifies, say so and present the assumptions you selected.
 
-Finding _facts_ is your job, never the user's. When a frontier question needs a fact from the environment (filesystem, tools, etc.), dispatch a sub-agent to find it — don't ask the user for anything you could look up yourself. Don't block on it: a running exploration is an unsettled prerequisite, so only the questions downstream of it wait for the sub-agent to report — ask the rest of the frontier now. The _decisions_ are the user's — put each to them and wait.
-
-The session is done when the frontier is empty: every branch of the design tree visited, nothing left silently assumed. Do not act on it until the user confirms you have reached a shared understanding.
+Finish with a concise shared-understanding summary: user decisions, agent-owned assumptions, and any explicitly deferred point. Do not begin implementation unless the user asked the session to continue into implementation.

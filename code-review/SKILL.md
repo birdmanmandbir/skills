@@ -1,9 +1,9 @@
 ---
 name: code-review
-description: Review the changes since a fixed point (commit, branch, tag, or merge-base) along two axes — Standards (does the code follow this repo's documented coding standards?) and Spec (does the code match what the originating issue/spec asked for?). Runs both reviews in parallel sub-agents and reports them side by side. Use when the user wants to review a branch, a PR, work-in-progress changes, or asks to "review since X".
+description: Review a branch or work-in-progress diff against the repository's default branch, or an explicit fixed point, along separate Standards and Spec axes; then assess how far it is from merge.
 ---
 
-Two-axis review of the diff between `HEAD` and a fixed point the user supplies:
+Two-axis review of the diff between `HEAD` and the repository's default branch, unless the user supplies another fixed point:
 
 - **Standards** — does the code conform to this repo's documented coding standards?
 - **Spec** — does the code faithfully implement the originating issue / spec?
@@ -16,7 +16,16 @@ The issue tracker should have been provided to you — run `/setup-matt-pocock-s
 
 ### 1. Pin the fixed point
 
-Whatever the user said is the fixed point — a commit SHA, branch name, tag, `main`, `HEAD~5`, etc. If they didn't specify one, ask for it.
+Use a fixed point the user explicitly supplied. Otherwise review against the repository's default branch.
+
+Resolve the default branch from the current branch's remote (falling back to `origin`) and its remote `HEAD`:
+
+```sh
+remote=$(git config --get "branch.$(git branch --show-current).remote" || printf '%s\n' origin)
+git symbolic-ref --quiet --short "refs/remotes/$remote/HEAD"
+```
+
+The result, such as `origin/main`, is the fixed point. If that local symbolic ref is absent, query the remote with `git ls-remote --symref "$remote" HEAD`, fetch the reported branch, and use `<remote>/<branch>`. If the repository has no remote, use local `main` or `master` when one exists; ask the user only when no default can be discovered.
 
 Capture the diff command once: `git diff <fixed-point>...HEAD` (three-dot, so the comparison is against the merge-base). Also note the list of commits via `git log <fixed-point>..HEAD --oneline`.
 
@@ -73,9 +82,17 @@ If the spec is missing, skip the Spec sub-agent and note this in the final repor
 
 ### 5. Aggregate
 
-Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Do **not** merge or rerank findings — the two axes are deliberately separate (see _Why two axes_).
+Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Keep the axes separate so neither masks the other.
 
-End with a one-line summary: total findings per axis, and the worst issue _within each axis_ (if any). Don't pick a single winner across axes — that's the reranking the separation exists to prevent.
+Then add `## Merge readiness` and answer: **How far is this version from merge?** Use one of these verdicts:
+
+- **Ready** — no blocking findings and the relevant checks pass.
+- **Close** — only bounded fixes remain; list the blockers and the smallest path to ready.
+- **Not ready** — core behaviour is missing, or correctness, security, data, or unresolved design risk remains; name the blocking areas.
+
+State the expected scope of the remaining work (for example, “one small fix-and-verify pass” or “multiple substantial changes”), not a time estimate. A judgement-call smell is not automatically a merge blocker; explain when one affects the verdict.
+
+End with a one-line count of findings per axis and the worst issue within each axis, if any.
 
 ## Why two axes
 
