@@ -64,7 +64,20 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man** — a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest** — a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Spawn both sub-agents in parallel
+### 4. Select reviewer models and spawn both sub-agents in parallel
+
+Call `tools.models()` and resolve the exact currently available keys before spawning. Prefer direct providers; use OpenRouter only when the user explicitly requests it or a required direct route is unavailable. Never silently fall back to an unrelated configured model.
+
+Model size is not a review-quality ordering. Use independent contexts, narrow evidence, and a task-appropriate reviewer rather than automatically choosing a model far stronger than the coder. Apply this default policy:
+
+| Change risk | Standards reviewer | Spec reviewer |
+| --- | --- | --- |
+| Normal | `deepseek/deepseek-v4-flash`, thinking `high` | `openai-codex/gpt-5.6-luna`, thinking `high` |
+| High | `openai-codex/gpt-5.6-luna`, thinking `high` | `openai-codex/gpt-5.6-terra`, thinking `high` |
+
+Treat a change as high risk when it materially changes authentication or authorization, owner isolation, money, persistence or migrations, transactions, concurrency, queues or delivery guarantees, state machines, cross-runtime contracts, or a broad architectural execution path. Make this technical classification yourself. A large diff alone raises review difficulty but does not automatically justify stronger models; first narrow the evidence supplied to each reviewer.
+
+Use fresh `agents.run` contexts for both axes. Do not use an actor or handoff: independence from the implementer and from the other axis is part of the review design. Run the two calls in parallel. If the requested direct model is unavailable, report that blocker rather than substituting an unconfigured provider.
 
 **Standards sub-agent prompt** — include:
 
@@ -79,6 +92,8 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - The brief: "Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words."
 
 If the spec is missing, skip the Spec sub-agent and note this in the final report.
+
+**Focused adjudication** — do not run a third full review or ensemble reviewers. When a potential merge blocker remains materially uncertain, first use deterministic evidence when available. If model judgement is still required, send only that finding, its cited hunk, the governing requirement, and relevant test evidence to `openai-codex/gpt-5.6-terra` at thinking `high`. Keep the result under the finding's original axis; adjudication confirms or rejects evidence and never reranks Standards against Spec.
 
 ### 5. Aggregate
 
