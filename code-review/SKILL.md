@@ -79,17 +79,24 @@ Treat a change as high risk when it materially changes authentication or authori
 
 Use fresh `agents.run` contexts for both axes. Do not use an actor or handoff: independence from the implementer and from the other axis is part of the review design. Run the two calls in parallel. If the requested direct model is unavailable, report that blocker rather than substituting an unconfigured provider.
 
+Give both reviewers this **evidence and proportionality discipline**:
+
+- Separate verified repository/deployment facts from assumptions. Label every consequential unverified premise `Assumption — needs confirmation`; never turn it into a blocker, implementation requirement, or something to propagate back into specs, tickets, or docs.
+- Self-check each finding's expected value and likelihood against implementation and operational effort. Drop high-effort, low-value or low-probability recommendations. If a heavy option may still be worthwhile, present it only as approval-gated with its evidence and a smaller alternative; do not recommend doing it before the user agrees. Provisioning an entire environment solely for an integration test is one such heavy option.
+- Development-data migrations, legacy compatibility, dual-running, cutover staging, expand–migrate–contract, and “start new before removing old” require verified deployment history **and explicit user approval**. For a confirmed first deployment, do not recommend them.
+- For every retained finding, state the smallest proportionate fix and estimate its changed LOC as a rough range (additions plus deletions, excluding generated files and lockfiles). LOC is not an effort proxy; separately mention material environment or operational work.
+
 **Standards sub-agent prompt** — include:
 
 - The full diff command and commit list.
 - The list of standards-source files you found in step 3, **plus the smell baseline from step 3** pasted in full — the sub-agent has no other access to it.
-- The brief: "Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. Under 400 words."
+- The brief: "Apply the evidence and proportionality discipline above. Report — per file/hunk where relevant — (a) every place the diff violates a documented standard: cite the standard (file + the rule); and (b) any baseline smell you spot: name it and quote the hunk. Distinguish hard violations from judgement calls — documented-standard breaches can be hard, but baseline smells are always judgement calls, and a documented repo standard overrides the baseline. Skip anything tooling enforces. For every retained finding include the smallest fix and estimated changed LOC. Under 500 words."
 
 **Spec sub-agent prompt** — include:
 
 - The diff command and commit list.
 - The path or fetched contents of the spec.
-- The brief: "Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. Under 400 words."
+- The brief: "Apply the evidence and proportionality discipline above. Report: (a) requirements the spec asked for that are missing or partial; (b) behaviour in the diff that wasn't asked for (scope creep); (c) requirements that look implemented but where the implementation looks wrong. Quote the spec line for each finding. For every retained finding include the smallest fix and estimated changed LOC. Under 500 words."
 
 If the spec is missing, skip the Spec sub-agent and note this in the final report.
 
@@ -97,7 +104,9 @@ If the spec is missing, skip the Spec sub-agent and note this in the final repor
 
 ### 5. Aggregate
 
-Present the two reports under `## Standards` and `## Spec` headings, verbatim or lightly cleaned. Keep the axes separate so neither masks the other.
+Before presenting findings, run the evidence and proportionality discipline yourself. Remove findings whose premise is contradicted or whose cost is disproportionate to expected value. Downgrade unresolved hypothetical risks to labelled assumptions requiring confirmation; do not let them expand scope. Any approval-gated migration, compatibility, cutover, dual-running, heavy environment, or similar mechanism must remain unimplemented unless the user explicitly agrees.
+
+Present the surviving reports under `## Standards` and `## Spec` headings, lightly cleaned as needed. Keep the axes separate so neither masks the other. Every finding must include its smallest proportionate fix and rough changed-LOC range; also state non-code setup effort when material.
 
 Then add `## Merge readiness` and answer: **How far is this version from merge?** Use the user's language and this structure:
 

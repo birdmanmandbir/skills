@@ -39,21 +39,9 @@ Give each ticket its **blocking edges** — the other tickets that must complete
 
 Treat the current repository — monorepo or otherwise — as the default atomic change boundary. For a cross-cutting mechanical edit, prefer one ticket or independently green end-to-end slices. Introduce temporary old/new forms only when there is evidence of an external consumer or a real multi-deployment boundary that cannot change atomically.
 
-### 4. Quiz the user
+### 4. Finalize the breakdown
 
-Present the proposed breakdown as a numbered list. For each ticket, show:
-
-- **Title**: short descriptive name
-- **Blocked by**: which other tickets (if any) must complete first
-- **What it delivers**: the end-to-end behaviour this ticket makes work
-
-Ask the user:
-
-- Does the granularity feel right? (too coarse / too fine)
-- Are the blocking edges correct — does each ticket only depend on tickets that genuinely gate it?
-- Should any tickets be merged or split further?
-
-Iterate until the user approves the breakdown.
+Choose the granularity and blocking edges yourself from the vertical-slice rules. Do not ask the user to approve, merge, or split routine ticket boundaries. Ask only when an unresolved product decision changes what the tickets deliver; otherwise proceed directly to publication.
 
 ### 5. Publish the tickets as local Markdown
 

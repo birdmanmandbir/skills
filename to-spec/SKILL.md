@@ -20,8 +20,12 @@ Use the project-local Markdown tracker exclusively. Choose a concise feature slu
    - Can this coherently land in one PR?
    - Which elements are required for the user's core outcome, and which are merely nice to have?
    - Is there speculative abstraction, configuration, compatibility staging, prefactoring, or platform breadth unsupported by a current requirement?
+   - Does any migration, legacy compatibility, dual-running, cutover, or expand–migrate–contract mechanism rely on an unverified deployment-history assumption rather than an explicit user-approved need?
    - Can one low-value requirement be dropped to remove disproportionate implementation complexity?
    - Does a simpler design satisfy both the user experience and implementation constraints?
+   - Is the changed-LOC estimate consistent with the proposed implementation and testing work?
+
+   Treat development-environment data migration, old-version compatibility, dual-running, cutover staging, and “start new before removing old” as approval-gated scope. Include them only when the user explicitly approves the concrete need; a reviewer's hypothetical historical state is an assumption to confirm, not a requirement to harden and propagate into the spec, tickets, or docs. For a confirmed first deployment, omit these mechanisms.
 
    Delete complexity that has no user-facing cost. If dropping or narrowing a user-visible point creates a meaningful simplification, present the tradeoff, your recommendation, and the concrete complexity it removes; wait for the user's choice. Do not ask about routine implementation details.
 
@@ -58,6 +62,10 @@ Do not include file paths or code snippets that will quickly go stale. If a prot
 ## Testing Decisions
 
 State the observable contracts to test, the highest existing seams used, and relevant prior art in the repository. Test behaviour rather than implementation details.
+
+## Estimated Changed LOC
+
+Estimate implementation size as ranges for product code, tests, and configuration/docs, followed by a total range. Count additions plus deletions against the PR's fixed point; exclude generated files and lockfiles. Note the main assumptions behind the estimate so implementation can report actuals and explain material variance.
 
 ## Out of Scope
 

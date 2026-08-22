@@ -30,4 +30,6 @@ Use `/tdd` where it fits, at the seams selected in the spec. Make routine implem
 
 Run typechecking and targeted tests regularly, then the full relevant suite once at the end. Verify the observable acceptance criteria, not just the build.
 
-Once done, use `/code-review`; it will compare against the default branch unless the user specified another fixed point. Resolve merge-blocking findings, then commit the work to the current feature branch.
+If the spec contains an estimated changed-LOC range, report actual additions plus deletions against the PR's fixed point using the same categories, excluding generated files and lockfiles. Explain material variance from the estimate.
+
+Report the completed acceptance criteria and verification evidence, then commit the work to the current feature branch. Code review starts only when the user requests it.

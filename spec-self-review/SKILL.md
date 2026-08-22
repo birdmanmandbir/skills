@@ -56,7 +56,13 @@ Every mechanism must earn its complexity through at least one of:
 3. a verified external consumer or real independent deployment boundary;
 4. a plausible correctness, security, data-loss, or operational failure in the promised path.
 
-Simplify or remove mechanisms without that proof. Look especially for:
+Simplify or remove mechanisms without that proof.
+
+Treat development-environment data migration, old-version compatibility, dual-running, cutover staging, and expand–migrate–contract as **approval-gated scope**, including “start new before removing old.” Even when a reviewer sees a plausible risk, do not add one of these mechanisms unless the user explicitly approves the concrete need. Verify deployment history first; an unverified historical worker, queue, database, consumer, or old release remains a labelled assumption, not a requirement. Do not reverse-write a hypothetical review risk into the spec, tickets, or docs. For a confirmed first deployment, remove the migration or cutover mechanism.
+
+For any other high-effort mechanism justified by a low-probability risk or low expected value, prefer the smallest safe path. Remove it when unnecessary; when the tradeoff genuinely needs human judgement, present its evidence, expected value, effort, and recommendation and wait for explicit approval. This includes provisioning a substantial environment solely to add an integration test when an existing seam provides adequate confidence.
+
+Look especially for:
 
 - abstractions, interfaces, factories, plugins, state machines, or configuration added for one fixed case;
 - generalized frameworks where one capability-local function or type is enough;
@@ -99,7 +105,8 @@ Before declaring the review complete, mechanically confirm:
 - every core user story maps to implementation decisions and an observable test;
 - public contracts, registrations, migrations, secrets, routes, and deployment steps are named when applicable;
 - no requirement depends on an unverified repository or platform assumption;
-- no compatibility path lacks an external consumer or deployment-boundary reason;
+- no migration, compatibility, dual-running, or cutover mechanism lacks both verified deployment evidence and explicit user approval;
+- no review hypothesis has been promoted from assumption to requirement;
 - no optional mechanism survives without a complexity proof;
 - tests use the highest practical seam and representative cases;
 - out-of-scope statements prevent likely scope creep without restating the whole spec;
