@@ -91,16 +91,24 @@ Use `residency: "durable"` when that actor must retain ownership across Main res
 
 ## 3. Delegate implementation correctly
 
-When delegating repository implementation:
+Use these implementation profiles:
 
-1. Pin the starting branch/commit and confirm a clean worktree.
+- **Spec/ticket implementation:** default to a fresh blocking `agents.run` in the current clean workspace. The spec and tickets are the context boundary; Main verifies the returned commit and evidence.
+- **Trajectory continuation:** use `agents.handoff` only when the user asks another model to continue Main's work or consequential decisions remain outside the spec/tickets.
+- **Parallel ticket frontier:** use concurrent `agents.run({ worktree: true })` calls only for independently verifiable tickets with explicit disjoint write ownership. Main integrates and verifies their commits; a shared frontier alone does not prove parallel safety.
+
+For the complete multi-ticket dispatch, integration, cleanup, and frontier loop, use `/Users/neil/.agents/skills/orchestrate-implementation/SKILL.md`.
+
+For every delegated implementation:
+
+1. Pin the starting branch/commit and confirm a clean tracked worktree.
 2. Point to the project-local spec or tickets.
 3. Require the agent to read and follow `/Users/neil/.agents/skills/implement/SKILL.md`.
-4. State the branch/PR boundary, required checks, and whether deployment is excluded.
+4. State the branch/PR boundary, write ownership, required checks, and whether deployment is excluded.
 5. Let the implementer make routine technical decisions; ask only about unresolved user-facing tradeoffs.
-6. Require observable verification and a final diff review.
+6. Require observable verification, changed paths, and a final commit SHA.
 
-Use `worktree: true` for genuinely parallel writers. For one visible implementation handoff, work in the current clean workspace so Main can inspect the result directly.
+A worktree isolates files, not credentials, processes, network access, or external services.
 
 ## 4. Recover without losing context
 
