@@ -1,10 +1,10 @@
 ---
 name: to-spec
-description: Turn the current conversation into a project-local Markdown spec — synthesize first, then discuss only a high-leverage simplification found during self-review.
+description: Turn the current conversation into a project-local draft spec, then run the shared spec self-review to revise it and determine readiness.
 disable-model-invocation: true
 ---
 
-Turn the current conversation and codebase context into one implementation-ready spec. Do not restart discovery as an interview. Ask only when the self-review finds a user-facing tradeoff where dropping a low-priority requirement materially simplifies the implementation.
+Turn the current conversation and codebase context into one implementation-ready spec. Do not restart discovery as an interview. Draft from the known context, then use the shared spec review workflow to revise it and determine readiness.
 
 Use the project-local Markdown tracker exclusively. Choose a concise feature slug and write the spec to `.scratch/<feature-slug>/spec.md`, creating the directory when needed. One spec is the delivery boundary for exactly one PR. It may later produce multiple tickets, but those tickets are work units within that PR.
 
@@ -16,20 +16,7 @@ Use the project-local Markdown tracker exclusively. Choose a concise feature slu
 
 3. Draft the spec at `.scratch/<feature-slug>/spec.md` with `Status: draft`, using the template below.
 
-4. Self-review the completed draft before marking it ready:
-   - Can this coherently land in one PR?
-   - Which elements are required for the user's core outcome, and which are merely nice to have?
-   - Is there speculative abstraction, configuration, compatibility staging, prefactoring, or platform breadth unsupported by a current requirement?
-   - Does any migration, legacy compatibility, dual-running, cutover, or expand–migrate–contract mechanism rely on an unverified deployment-history assumption rather than an explicit user-approved need?
-   - Can one low-value requirement be dropped to remove disproportionate implementation complexity?
-   - Does a simpler design satisfy both the user experience and implementation constraints?
-   - Is the changed-LOC estimate consistent with the proposed implementation and testing work?
-
-   Treat development-environment data migration, old-version compatibility, dual-running, cutover staging, and “start new before removing old” as approval-gated scope. Include them only when the user explicitly approves the concrete need; a reviewer's hypothetical historical state is an assumption to confirm, not a requirement to harden and propagate into the spec, tickets, or docs. For a confirmed first deployment, omit these mechanisms.
-
-   Delete complexity that has no user-facing cost. If dropping or narrowing a user-visible point creates a meaningful simplification, present the tradeoff, your recommendation, and the concrete complexity it removes; wait for the user's choice. Do not ask about routine implementation details.
-
-5. Revise the spec from that decision and set `Status: ready-for-agent`. The ready spec must still describe one PR, even when `/to-tickets` later divides its work into several tickets.
+4. After writing the draft, discover and read `spec-self-review` by its exact frontmatter name, then follow it against the new spec in the same turn. Do not mark the spec `ready-for-agent` independently; that skill owns revision, clarification, and the readiness decision.
 
 <spec-template>
 
