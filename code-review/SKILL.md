@@ -64,24 +64,24 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man** — a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest** — a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Select reviewer models and spawn both sub-agents in parallel
-
-Call `tools.models()` and resolve the exact currently available keys before spawning. Prefer direct providers; use OpenRouter only when the user explicitly requests it or a required direct route is unavailable. Never silently fall back to an unrelated configured model.
+### 4. Select reviewer profiles and run both sub-agents in parallel
 
 Model size is not a review-quality ordering. Use independent contexts, narrow evidence, and a task-appropriate reviewer rather than automatically choosing a model far stronger than the coder. Apply this default policy:
 
 | Change risk | Standards reviewer | Spec reviewer |
 | --- | --- | --- |
-| Normal | `deepseek/deepseek-v4-flash`, thinking `high` | `openai-codex/gpt-5.6-luna`, thinking `high` |
-| High | `openai-codex/gpt-5.6-luna`, thinking `high` | `openai-codex/gpt-5.6-terra`, thinking `high` |
+| Normal | `luna` | `luna` |
+| High | `luna` | `selected` |
 
 Treat a change as high risk when it materially changes authentication or authorization, owner isolation, money, persistence or migrations, transactions, concurrency, queues or delivery guarantees, state machines, cross-runtime contracts, or a broad architectural execution path. Make this technical classification yourself. A large diff alone raises review difficulty but does not automatically justify stronger models; first narrow the evidence supplied to each reviewer.
 
-Use fresh `agents.run` contexts for both axes. Do not use an actor or handoff: independence from the implementer and from the other axis is part of the review design. Run the two calls in parallel. If the requested direct model is unavailable, report that blocker rather than substituting an unconfigured provider.
+Use fresh contexts for both axes. Independence from the implementer and from the other axis is part of the review design. Run the two sub-agents in parallel.
 
 Give both reviewers this **evidence and proportionality discipline**:
 
 - Separate verified repository/deployment facts from assumptions. Label every consequential unverified premise `Assumption — needs confirmation`; never turn it into a blocker, implementation requirement, or something to propagate back into specs, tickets, or docs.
+- Investigate compatibility premises before asking the user. Search the repository, forge history, published-package or API evidence, and documented deployment state that are available in scope. Distinguish verified external usage or deployment from internal callers, development data, and hypothetical consumers.
+- Mark a finding `Judgement call — user decision required` when the smallest correct fix depends on unresolved external usage, prior deployment, retained data, public-contract, cutover, or product-behaviour facts. State the evidence checked, the exact unanswered question, your recommendation, and which compatibility or migration work becomes unnecessary if the user confirms the simpler case.
 - Self-check each finding's expected value and likelihood against implementation and operational effort. Drop high-effort, low-value or low-probability recommendations. If a heavy option may still be worthwhile, present it only as approval-gated with its evidence and a smaller alternative; do not recommend doing it before the user agrees. Provisioning an entire environment solely for an integration test is one such heavy option.
 - Development-data migrations, legacy compatibility, dual-running, cutover staging, expand–migrate–contract, and “start new before removing old” require verified deployment history **and explicit user approval**. For a confirmed first deployment, do not recommend them.
 - For every retained finding, state the smallest proportionate fix and estimate its changed LOC as a rough range (additions plus deletions, excluding generated files and lockfiles). LOC is not an effort proxy; separately mention material environment or operational work.
@@ -100,13 +100,15 @@ Give both reviewers this **evidence and proportionality discipline**:
 
 If the spec is missing, skip the Spec sub-agent and note this in the final report.
 
-**Focused adjudication** — do not run a third full review or ensemble reviewers. When a potential merge blocker remains materially uncertain, first use deterministic evidence when available. If model judgement is still required, send only that finding, its cited hunk, the governing requirement, and relevant test evidence to `openai-codex/gpt-5.6-terra` at thinking `high`. Keep the result under the finding's original axis; adjudication confirms or rejects evidence and never reranks Standards against Spec.
+**Focused adjudication** — do not run a third full review or ensemble reviewers. When a potential merge blocker remains materially uncertain, first use deterministic evidence when available. If model judgement is still required, send only that finding, its cited hunk, the governing requirement, and relevant test evidence to a fresh `selected` sub-agent. Keep the result under the finding's original axis; adjudication confirms or rejects evidence and never reranks Standards against Spec.
 
 ### 5. Aggregate
 
 Before presenting findings, run the evidence and proportionality discipline yourself. Remove findings whose premise is contradicted or whose cost is disproportionate to expected value. Downgrade unresolved hypothetical risks to labelled assumptions requiring confirmation; do not let them expand scope. Any approval-gated migration, compatibility, cutover, dual-running, heavy environment, or similar mechanism must remain unimplemented unless the user explicitly agrees.
 
 Present the surviving reports under `## Standards` and `## Spec` headings, lightly cleaned as needed. Keep the axes separate so neither masks the other. Every finding must include its smallest proportionate fix and rough changed-LOC range; also state non-code setup effort when material.
+
+When any judgement call remains, add `## Decisions required` before merge readiness. For each decision, separate verified facts from the unresolved premise, ask one focused question, recommend the simplest supported choice, and quantify the compatibility or migration code that choice adds or removes. Findings with no unresolved human choice stay in their original axis and are safe for an implementation workflow to fix automatically.
 
 Then add `## Merge readiness` and answer: **How far is this version from merge?** Use the user's language and this structure:
 
