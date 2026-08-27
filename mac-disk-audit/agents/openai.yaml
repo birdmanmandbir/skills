@@ -1,4 +1,0 @@
-interface:
-  display_name: "Mac Disk Audit"
-  short_description: "Audit and safely reclaim macOS disk space"
-  default_prompt: "Use $mac-disk-audit to find safe ways to reclaim disk space on this Mac."

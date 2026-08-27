@@ -1,4 +1,0 @@
-interface:
-  display_name: "Natural Email Writing"
-  short_description: "Write personal, clear, specific emails"
-  default_prompt: "Use $writing-natural-emails to turn this draft into a natural, sendable email."

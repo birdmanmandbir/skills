@@ -1,4 +1,0 @@
-interface:
-  display_name: "Write Natural Messages"
-  short_description: "Draft natural messages for real conversations"
-  default_prompt: "Use $writing-natural-messages to turn this draft into a natural message I can send."
