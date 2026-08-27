@@ -1,0 +1,4 @@
+interface:
+  display_name: "Media Album Curator"
+  short_description: "Curate local photo/video albums"
+  default_prompt: "Use $media-album-curator to organize this local photo/video batch into a small shareable album."

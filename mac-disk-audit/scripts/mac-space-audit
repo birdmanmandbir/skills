@@ -1,0 +1,314 @@
+#!/bin/zsh
+set -u
+
+home="$HOME"
+scan_system=1
+stale_days=365
+fresh=0
+use_cache=1
+cache_root="${XDG_CACHE_HOME:-$HOME/.cache}/mac-space-audit"
+cache_file="$cache_root/sizes.tsv"
+repo_cache_file="$cache_root/repos.tsv"
+typeset -A cached_sizes cached_times
+typeset -A cached_repo_classes cached_repo_dates cached_repo_times
+
+usage() {
+  cat <<'EOF'
+用法: mac-space-audit [--home DIR] [--no-system] [--stale-days N] [--fresh] [--no-cache] [--help]
+
+分析 Mac 磁盘空间。不会删除或修改被扫描内容，也不会运行清理命令。
+  --home DIR    扫描指定的用户目录（便于测试或扫描其他账户）
+  --no-system   跳过磁盘、Time Machine 和 Homebrew 检查
+  --stale-days  Git 仓库多久无提交算旧仓库（默认 365 天）
+  --fresh       忽略 24 小时缓存并重新扫描
+  --no-cache    不读写审计缓存（Git/Homebrew 仍可能维护自身状态）
+EOF
+}
+
+while (( $# > 0 )); do
+  case "$1" in
+    --home)
+      if (( $# < 2 )); then
+        print -u2 "错误: --home 需要一个目录"
+        exit 2
+      fi
+      home="$2"
+      shift 2
+      ;;
+    --no-system)
+      scan_system=0
+      shift
+      ;;
+    --stale-days)
+      if (( $# < 2 )) || [[ "$2" != <-> ]]; then
+        print -u2 "错误: --stale-days 需要正整数"
+        exit 2
+      fi
+      stale_days="$2"
+      shift 2
+      ;;
+    --fresh)
+      fresh=1
+      shift
+      ;;
+    --no-cache)
+      use_cache=0
+      fresh=1
+      shift
+      ;;
+    --help|-h)
+      usage
+      exit 0
+      ;;
+    *)
+      print -u2 "错误: 未知参数 $1"
+      usage >&2
+      exit 2
+      ;;
+  esac
+done
+
+if [[ ! -d "$home" ]]; then
+  print -u2 "错误: 目录不存在: $home"
+  exit 2
+fi
+
+human_kib() {
+  awk -v kib="$1" 'BEGIN {
+    if (kib >= 1048576) printf "%.1f GiB", kib / 1048576;
+    else if (kib >= 1024) printf "%.1f MiB", kib / 1024;
+    else printf "%d KiB", kib;
+  }'
+}
+
+load_cache() {
+  (( use_cache )) || return
+  (( fresh )) && return
+  [[ -r "$cache_file" ]] || return
+  local cached_path cached_kib cached_epoch
+  while IFS=$'\t' read -r cached_path cached_kib cached_epoch; do
+    [[ -n "$cached_path" && "$cached_kib" == <-> ]] || continue
+    cached_sizes[$cached_path]="$cached_kib"
+    cached_times[$cached_path]="$cached_epoch"
+  done < "$cache_file"
+}
+
+save_cache() {
+  local target="$1" kib="$2"
+  (( use_cache )) || return
+  mkdir -p "$cache_root" 2>/dev/null || return
+  printf '%s\t%s\t%s\n' "$target" "$kib" "$(date +%s)" >> "$cache_file" 2>/dev/null || true
+}
+
+load_cache
+
+load_repo_cache() {
+  (( use_cache )) || return
+  (( fresh )) && return
+  [[ -r "$repo_cache_file" ]] || return
+  local cached_repo cached_class cached_date cached_epoch
+  while IFS=$'\t' read -r cached_repo cached_class cached_date cached_epoch; do
+    [[ -n "$cached_repo" && "$cached_epoch" == <-> ]] || continue
+    cached_repo_classes[$cached_repo]="$cached_class"
+    cached_repo_dates[$cached_repo]="$cached_date"
+    cached_repo_times[$cached_repo]="$cached_epoch"
+  done < "$repo_cache_file"
+}
+
+save_repo_cache() {
+  local cached_repo="$1" cached_class="$2" cached_date="$3"
+  (( use_cache )) || return
+  mkdir -p "$cache_root" 2>/dev/null || return
+  printf '%s\t%s\t%s\t%s\n' "$cached_repo" "$cached_class" "$cached_date" "$(date +%s)" >> "$repo_cache_file" 2>/dev/null || true
+}
+
+load_repo_cache
+
+dir_size() {
+  local target="$1" result rc kib cached_epoch cached_date now
+  [[ -e "$target" ]] || { print -- "-"; return; }
+  now="$(date +%s)"
+  if [[ -n "${cached_sizes[$target]:-}" ]]; then
+    cached_epoch="${cached_times[$target]:-0}"
+    if (( now - cached_epoch < 86400 )); then
+      cached_date="$(date -r "$cached_epoch" '+%m-%d %H:%M' 2>/dev/null || print 未知时间)"
+      print "$(human_kib "${cached_sizes[$target]}")（缓存 $cached_date）"
+      return
+    fi
+  fi
+  result="$(/usr/bin/du -sk "$target" 2>/dev/null)"
+  rc=$?
+  if [[ -z "$result" ]]; then
+    if [[ -n "${cached_sizes[$target]:-}" ]]; then
+      cached_epoch="${cached_times[$target]:-0}"
+      cached_date="$(date -r "$cached_epoch" '+%m-%d %H:%M' 2>/dev/null || print 未知时间)"
+      print "$(human_kib "${cached_sizes[$target]}")（缓存 $cached_date）"
+    else
+      print "未完整扫描（无缓存）"
+    fi
+    return
+  fi
+  kib="${result%%[[:space:]]*}"
+  save_cache "$target" "$kib"
+  if (( rc != 0 )); then
+    print "≥$(human_kib "$kib")（部分）"
+    return
+  fi
+  human_kib "$kib"
+}
+
+print_row() {
+  local label="$1" target="$2" note="$3"
+  printf "  %-13s %-38s %s\n" "$(dir_size "$target")" "${target/#$home/~}" "$label：$note"
+}
+
+print "Mac 空间审计"
+print "扫描目录: ${home/#$HOME/~}"
+print "时间: $(date '+%Y-%m-%d %H:%M:%S')"
+print
+
+if (( scan_system )); then
+  print "磁盘"
+  df -h / | awk 'NR == 2 {printf "  系统卷: 总容量 %s，已用 %s，可用 %s（共享 APFS 容器）\n", $2, $3, $4}'
+  if [[ -d /System/Volumes/Data ]]; then
+    df -h /System/Volumes/Data | awk 'NR == 2 {printf "  Data 卷: 已用 %s，可用 %s（真实用户与应用数据主要在此）\n", $3, $4}'
+  fi
+  print
+fi
+
+print "建议检查"
+print "  大小          路径                                   建议"
+print_row "低风险" "$home/.Trash" "确认无用后清空废纸篓"
+print_row "低风险" "$home/Library/Logs" "旧日志通常可重建，先按修改时间检查"
+print_row "中风险" "$home/Library/Caches" "仅清理已退出应用的缓存；部分目录可能受系统保护"
+print_row "需人工确认" "$home/Downloads" "检查旧安装包、压缩包、视频和重复下载"
+print_row "需人工确认" "$home/Desktop" "检查临时大文件，不要批量删除"
+print
+
+print "可重建工具缓存（不含 iOS/Android 开发目录）"
+print "  大小          路径                                   官方或建议清理方式"
+print_row "低风险" "$home/.bun/install/cache" "bun pm cache rm"
+print_row "低风险" "$home/.cache/.bun/install/cache" "旧 Bun 缓存；确认当前 Bun 路径后删除"
+print_row "低风险" "$home/.cache/uv" "uv cache clean"
+print_row "低风险" "$home/.qlty/cache" "不用 Qlty 时移除 ~/.qlty"
+print_row "低风险" "$home/.npm/_cacache" "npm cache clean --force"
+print_row "低风险" "$home/.npm/_npx" "npx 临时包；npm 官方 cache clean 不会清此目录"
+print_row "低风险" "$home/go/pkg/mod" "go clean -modcache"
+print_row "低风险" "$home/.cache/yarn" "yarn cache clean"
+print_row "低风险" "$home/.cache/puppeteer" "Puppeteer 浏览器会按需重下"
+print_row "低风险" "$home/Library/Caches/ms-playwright" "Playwright 浏览器会按需重下"
+print_row "低风险" "$home/Library/Application Support/Caches" "退出应用后清更新器缓存"
+print
+
+print "安全释放组合"
+print "  10 GiB: 从上述最大的一个或两个缓存开始。"
+print "  25 GiB: 优先 Bun + uv，再按实际大小补 npm/Qlty。"
+print "  50 GiB: 在 25 GiB 方案上加入 Go modules、Web 测试浏览器及已停用工具。"
+print "  先按报告中的实测大小求和；缓存可重建，但首次安装或构建会重新下载。"
+print
+
+print "Library 主要分类"
+print "  大小          路径                                   说明"
+print_row "需确认" "$home/Library/Application Support" "应用数据；卸载应用后可能有残留"
+print_row "需确认" "$home/Library/Containers" "沙盒应用数据，不要按大小直接删除"
+print_row "需确认" "$home/Library/Group Containers" "共享应用数据，可能含邮件和云盘文件"
+print_row "需确认" "$home/Library/Messages" "信息附件与数据库"
+print_row "需确认" "$home/Library/Mail" "邮件与附件"
+print_row "需确认" "$home/Library/CloudStorage" "云盘本地副本，需从对应客户端释放"
+print_row "开发保护" "$home/Library/Developer" "Xcode、SDK、模拟器及构建数据"
+print_row "开发保护" "$home/Library/Android" "Android SDK/NDK"
+print
+
+print "受保护的开发目录（不计入清理建议）"
+print "  大小          路径                                   用途"
+print_row "保留" "$home/Library/Developer" "Xcode、SDK、模拟器及构建数据"
+print_row "保留" "$home/Library/Android" "Android SDK/NDK"
+print_row "保留" "$home/.android" "Android 配置与模拟器"
+print_row "保留" "$home/.gradle" "Gradle 依赖与构建缓存"
+print_row "保留" "$home/.cocoapods" "CocoaPods 数据"
+print_row "保留" "$home/.pub-cache" "Dart/Flutter 依赖"
+print_row "保留" "$home/.konan" "Kotlin/Native 工具链"
+print_row "保留" "$home/.cargo" "Rust 工具链依赖，移动开发可能使用"
+print_row "保留" "$home/.rustup" "Rust 工具链"
+print "  保护规则: 不建议清理 Xcode、Simulator、Android SDK/NDK、AVD、Gradle 或移动项目。"
+print
+
+print "Code 仓库归档建议（旧仓库阈值 ${stale_days} 天）"
+print "  分类             大小          最后提交    仓库"
+if [[ -d "$home/Code" ]] && command -v git >/dev/null 2>&1; then
+  repo_count=0
+  while IFS= read -r -d '' git_marker; do
+    repo="${git_marker:h}"
+    (( repo_count += 1 ))
+    repo_cache_epoch="${cached_repo_times[$repo]:-0}"
+    if (( ! fresh && $(date +%s) - repo_cache_epoch < 86400 )) && [[ -n "${cached_repo_classes[$repo]:-}" ]]; then
+      printf "  %-16s %-13s %-11s %s\n" "${cached_repo_classes[$repo]}" "$(dir_size "$repo")" "${cached_repo_dates[$repo]}" "${repo/#$home/~}"
+      continue
+    fi
+    last_epoch="$(git -C "$repo" log -1 --format=%ct 2>/dev/null || true)"
+    last_date="$(git -C "$repo" log -1 --format=%cs 2>/dev/null || print 无提交)"
+    dirty="$(git -C "$repo" status --porcelain 2>/dev/null || print '?')"
+    remotes="$(git -C "$repo" remote 2>/dev/null || true)"
+    unpushed="$(git -C "$repo" log --branches --not --remotes --oneline 2>/dev/null || true)"
+    mobile=0
+    if find "$repo" -maxdepth 2 \( -name '*.xcodeproj' -o -name '*.xcworkspace' -o -name 'build.gradle' -o -name 'build.gradle.kts' -o -name 'settings.gradle' -o -name 'settings.gradle.kts' -o -name 'gradlew' \) -print -quit 2>/dev/null | grep -q .; then
+      mobile=1
+    fi
+    class="保留（活跃）"
+    if [[ -z "$last_epoch" ]]; then
+      class="先备份再考虑"
+    elif (( $(date +%s) - last_epoch >= stale_days * 86400 )); then
+      if (( mobile )); then
+        class="移动开发保护"
+      elif [[ -n "$dirty" ]]; then
+        class="高风险（有改动）"
+      elif [[ -z "$remotes" || -n "$unpushed" ]]; then
+        class="先备份再考虑"
+      else
+        class="可归档后删除"
+      fi
+    fi
+    save_repo_cache "$repo" "$class" "$last_date"
+    printf "  %-16s %-13s %-11s %s\n" "$class" "$(dir_size "$repo")" "$last_date" "${repo/#$home/~}"
+  done < <(find "$home/Code" -mindepth 2 -maxdepth 5 \( -type d -o -type f \) -name .git -print0 2>/dev/null)
+  (( repo_count > 0 )) || print "  （没有找到 Git 仓库）"
+else
+  print "  （Code 目录不存在或 Git 未安装）"
+fi
+print "  注：归档前仍需确认所有分支、tag、未跟踪文件和远端可用性。"
+print
+
+print "下载目录中的大文件（超过 500 MiB，最多 20 个）"
+if [[ -d "$home/Downloads" ]]; then
+  find "$home/Downloads" -type f -size +500M -print0 2>/dev/null |
+    xargs -0 stat -f '%z%t%N' 2>/dev/null |
+    sort -rn |
+    head -20 |
+    awk -F '\t' '{
+      size=$1; $1=""; sub(/^\t?/, "");
+      printf "  %.1f GiB  %s\n", size/1073741824, $0
+    }'
+else
+  print "  （目录不存在）"
+fi
+print
+
+if (( scan_system )); then
+  print "系统检查"
+  print_row "应用" "/Applications" "已安装应用；优先用应用自带卸载方式"
+  print_row "共享数据" "/Library" "系统级应用数据，不要直接批量删除"
+  print_row "系统数据" "/private/var" "日志、缓存、交换文件；只报告，不建议手删"
+  print_row "Homebrew" "/opt/homebrew" "开发工具与包，不按目录直接删除"
+  snapshots="$(tmutil listlocalsnapshots / 2>/dev/null | tail -n +2 | wc -l | tr -d ' ')"
+  print "  本地/APFS 快照: ${snapshots:-未知} 个（系统更新快照不会建议强删）"
+  if command -v brew >/dev/null 2>&1; then
+    brew_lines="$(brew cleanup -n 2>/dev/null | sed '/^$/d' | wc -l | tr -d ' ')"
+    print "  Homebrew dry-run: ${brew_lines:-0} 行候选；运行 brew cleanup -n 查看详情"
+  else
+    print "  Homebrew: 未安装"
+  fi
+  print "  完整磁盘访问: 若出现“未完整扫描”，可在系统设置中给终端开启完整磁盘访问后重跑"
+  print
+fi
+
+print "本报告不会删除任何文件。先核对文件用途，再手动处理。"

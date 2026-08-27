@@ -1,0 +1,3 @@
+interface:
+  display_name: "Grilling"
+  short_description: "Ask only low-confidence user-facing questions"
