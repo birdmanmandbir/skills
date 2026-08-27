@@ -3,6 +3,10 @@
 set -euo pipefail
 
 readonly MAX_MESSAGE_BYTES=8192
+readonly PROMPT_TIMEOUT_MS=10000
+readonly START_ATTEMPTS=20
+readonly START_RETRY_DELAY_SECONDS=0.5
+HELPER_TEMP_DIR=
 
 die() {
   printf 'herdr-worker: %s\n' "$*" >&2
@@ -21,83 +25,252 @@ require_herdr() {
   require_command jq
 }
 
+cleanup() {
+  if [[ -n $HELPER_TEMP_DIR && -d $HELPER_TEMP_DIR ]]; then
+    rm -rf -- "$HELPER_TEMP_DIR"
+  fi
+}
+
+init_temp_dir() {
+  HELPER_TEMP_DIR=$(mktemp -d)
+  trap cleanup EXIT
+}
+
 usage() {
   cat >&2 <<'EOF'
 usage:
-  herdr-worker.sh start [--label LABEL] [--cwd PATH] [--model MODEL] [--thinking LEVEL]
-  herdr-worker.sh send --pane PANE_ID --message TEXT
+  herdr-worker.sh start [--label LABEL] [--cwd PATH]
+  herdr-worker.sh resume --pane PANE_ID [--label LABEL]
+  herdr-worker.sh send [--wait-ready] --pane PANE_ID --message TEXT
   herdr-worker.sh status --pane PANE_ID
 EOF
   exit 2
 }
 
-start_worker() {
-  local label=worker
-  local cwd=$PWD
-  local model=luna
-  local thinking=max
+json_error_code() {
+  jq -r '.error.code // empty' 2>/dev/null <<<"$1" || true
+}
 
-  while (($#)); do
-    case $1 in
-      --label) (($# >= 2)) || usage; label=$2; shift 2 ;;
-      --cwd) (($# >= 2)) || usage; cwd=$2; shift 2 ;;
-      --model) (($# >= 2)) || usage; model=$2; shift 2 ;;
-      --thinking) (($# >= 2)) || usage; thinking=$2; shift 2 ;;
-      *) usage ;;
-    esac
-  done
+json_error_message() {
+  jq -r '.error.message // empty' 2>/dev/null <<<"$1" || true
+}
 
-  [[ -d $cwd ]] || die "worker cwd is not a directory: $cwd"
-  case $model in sol|terra|luna) ;; *) die "unsupported Tact model: $model" ;; esac
-  case $thinking in low|medium|high|xhigh|max) ;; *) die "unsupported thinking level: $thinking" ;; esac
-
-  require_command tact
-
-  local created worker_pane worker_tab tact_bin tact_command status agent_state deadline
-  created=$(herdr tab create \
-    --workspace "$HERDR_WORKSPACE_ID" \
-    --cwd "$cwd" \
-    --label "$label" \
-    --no-focus)
-  worker_pane=$(jq -er '.result.root_pane.pane_id' <<<"$created")
-  worker_tab=$(jq -er '.result.tab.tab_id' <<<"$created")
-  tact_bin=$(command -v tact)
-  printf -v tact_command '%q --model %q --thinking %q --workspace %q' \
-    "$tact_bin" "$model" "$thinking" "$cwd"
-  herdr pane run "$worker_pane" "$tact_command"
-
-  deadline=$((SECONDS + 30))
-  status=
-  agent_state=
-  while ((SECONDS < deadline)); do
-    if status=$(herdr agent get "$worker_pane" 2>/dev/null); then
-      agent_state=$(jq -r '.result.agent.agent_status // empty' <<<"$status")
-      case $agent_state in
-        idle|done) break ;;
-      esac
-    fi
-    sleep 0.5
-  done
-
-  if [[ -z $status ]] || [[ $agent_state != "idle" && $agent_state != "done" ]]; then
-    die "Tact did not become ready in pane $worker_pane within 30 seconds; tab $worker_tab was preserved for diagnosis"
-  fi
+emit_start_failure() {
+  local worker_pane=$1
+  local worker_tab=$2
+  local recoverable=$3
+  local error=$4
+  local message=$5
 
   jq -n \
     --arg owner_pane_id "$HERDR_PANE_ID" \
     --arg worker_pane_id "$worker_pane" \
     --arg worker_tab_id "$worker_tab" \
-    --arg model "$model" \
-    --arg thinking "$thinking" \
-    '{owner_pane_id: $owner_pane_id, worker_pane_id: $worker_pane_id, worker_tab_id: $worker_tab_id, model: $model, thinking: $thinking}'
+    --arg error "$error" \
+    --arg message "$message" \
+    --argjson recoverable "$recoverable" \
+    '{started: false, recoverable: $recoverable, owner_pane_id: $owner_pane_id, worker_pane_id: $worker_pane_id, worker_tab_id: $worker_tab_id, error: $error, message: $message}'
+}
+
+emit_prompt_failure() {
+  local pane=$1
+  local error=$2
+  local message=$3
+  local status=${4:-}
+
+  jq -n \
+    --arg pane_id "$pane" \
+    --arg error "$error" \
+    --arg message "$message" \
+    --arg status "$status" \
+    '{accepted: false, pane_id: $pane_id, error: $error, message: $message} + if $status == "" then {} else {status: $status} end'
+}
+
+launch_worker() {
+  local label=$1
+  local cwd=$2
+  local worker_pane=$3
+  local worker_tab=$4
+  local attempt output error_file error_output error_code error_message status
+
+  for ((attempt = 1; attempt <= START_ATTEMPTS; attempt++)); do
+    error_file=$HELPER_TEMP_DIR/herdr-error.json
+    if output=$(herdr agent start "$label" \
+      --kind codex \
+      --pane "$worker_pane" \
+      --timeout 30000 \
+      -- -C "$cwd" 2>"$error_file"); then
+      status=$(jq -er '.result.agent.agent_status' <<<"$output")
+      jq -n \
+        --arg owner_pane_id "$HERDR_PANE_ID" \
+        --arg worker_pane_id "$worker_pane" \
+        --arg worker_tab_id "$worker_tab" \
+        --arg status "$status" \
+        '{started: true, owner_pane_id: $owner_pane_id, worker_pane_id: $worker_pane_id, worker_tab_id: $worker_tab_id, agent: "codex", status: $status}'
+      return 0
+    fi
+
+    error_output=$(<"$error_file")
+    error_code=$(json_error_code "$error_output")
+    error_message=$(json_error_message "$error_output")
+    [[ -n $error_code ]] || error_code=agent_start_failed
+    [[ -n $error_message ]] || error_message=$error_output
+
+    if [[ $error_code != agent_pane_busy ]]; then
+      emit_start_failure "$worker_pane" "$worker_tab" false "$error_code" "$error_message"
+      return 1
+    fi
+    if ((attempt < START_ATTEMPTS)); then
+      sleep "$START_RETRY_DELAY_SECONDS"
+    fi
+  done
+
+  emit_start_failure "$worker_pane" "$worker_tab" true agent_pane_busy \
+    "agent target pane did not reach an available shell after $START_ATTEMPTS attempts; resume the same pane"
+  return 1
+}
+
+start_worker() {
+  local label=worker
+  local cwd=$PWD
+
+  while (($#)); do
+    case $1 in
+      --label) (($# >= 2)) || usage; label=$2; shift 2 ;;
+      --cwd) (($# >= 2)) || usage; cwd=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+
+  [[ -d $cwd ]] || die "worker cwd is not a directory: $cwd"
+  require_command codex
+
+  local created worker_pane worker_tab error_file error_output error_code error_message
+  error_file=$HELPER_TEMP_DIR/herdr-error.json
+  if ! created=$(herdr tab create \
+    --workspace "$HERDR_WORKSPACE_ID" \
+    --cwd "$cwd" \
+    --label "$label" \
+    --no-focus 2>"$error_file"); then
+    error_output=$(<"$error_file")
+    error_code=$(json_error_code "$error_output")
+    error_message=$(json_error_message "$error_output")
+    [[ -n $error_code ]] || error_code=tab_create_failed
+    [[ -n $error_message ]] || error_message=$error_output
+    emit_start_failure "" "" false "$error_code" "$error_message"
+    return 1
+  fi
+  if ! worker_pane=$(jq -er '.result.root_pane.pane_id' <<<"$created"); then
+    emit_start_failure "" "" false invalid_herdr_response \
+      "tab create response did not include a worker pane ID"
+    return 1
+  fi
+  if ! worker_tab=$(jq -er '.result.tab.tab_id' <<<"$created"); then
+    emit_start_failure "$worker_pane" "" true invalid_herdr_response \
+      "tab create response did not include a worker tab ID"
+    return 1
+  fi
+  launch_worker "$label" "$cwd" "$worker_pane" "$worker_tab"
+}
+
+resume_worker() {
+  local pane=
+  local label=worker
+
+  while (($#)); do
+    case $1 in
+      --pane) (($# >= 2)) || usage; pane=$2; shift 2 ;;
+      --label) (($# >= 2)) || usage; label=$2; shift 2 ;;
+      *) usage ;;
+    esac
+  done
+
+  [[ -n $pane ]] || usage
+  require_command codex
+
+  local pane_info worker_tab cwd agent_info status agent_kind launch_pending interactive_ready
+  local error_file error_output error_code error_message
+  error_file=$HELPER_TEMP_DIR/herdr-error.json
+  if ! pane_info=$(herdr pane get "$pane" 2>"$error_file"); then
+    error_output=$(<"$error_file")
+    error_code=$(json_error_code "$error_output")
+    error_message=$(json_error_message "$error_output")
+    [[ -n $error_code ]] || error_code=pane_get_failed
+    [[ -n $error_message ]] || error_message=$error_output
+    emit_start_failure "$pane" "" false "$error_code" "$error_message"
+    return 1
+  fi
+  if ! worker_tab=$(jq -er '.result.pane.tab_id' <<<"$pane_info"); then
+    emit_start_failure "$pane" "" false invalid_herdr_response \
+      "pane response did not include a worker tab ID"
+    return 1
+  fi
+  if ! cwd=$(jq -er '.result.pane.cwd // .result.pane.foreground_cwd' <<<"$pane_info"); then
+    emit_start_failure "$pane" "$worker_tab" true pane_cwd_unavailable \
+      "pane working directory is not available yet; retry resume on the same pane"
+    return 1
+  fi
+
+  if agent_info=$(herdr agent get "$pane" 2>"$error_file"); then
+    agent_kind=$(jq -r '.result.agent.agent // empty' <<<"$agent_info")
+    status=$(jq -er '.result.agent.agent_status' <<<"$agent_info")
+    if [[ $agent_kind == codex ]]; then
+      launch_pending=$(jq -r '.result.agent.launch_pending // false' <<<"$agent_info")
+      interactive_ready=$(jq -r '.result.agent.interactive_ready // true' <<<"$agent_info")
+      if [[ $launch_pending == true || $interactive_ready == false ]]; then
+        if ! agent_info=$(herdr agent wait "$pane" \
+          --until idle \
+          --until 'done' \
+          --timeout 10000 2>"$error_file"); then
+          error_output=$(<"$error_file")
+          error_code=$(json_error_code "$error_output")
+          error_message=$(json_error_message "$error_output")
+          [[ -n $error_code ]] || error_code=agent_not_ready
+          [[ -n $error_message ]] || error_message=$error_output
+          emit_start_failure "$pane" "$worker_tab" true "$error_code" "$error_message"
+          return 1
+        fi
+        status=$(jq -er '.result.agent.agent_status' <<<"$agent_info")
+        interactive_ready=$(jq -r '.result.agent.interactive_ready // false' <<<"$agent_info")
+        if [[ $interactive_ready != true ]]; then
+          emit_start_failure "$pane" "$worker_tab" true agent_not_ready \
+            "Codex reached $status but is not ready for interactive prompts"
+          return 1
+        fi
+      fi
+      jq -n \
+        --arg owner_pane_id "$HERDR_PANE_ID" \
+        --arg worker_pane_id "$pane" \
+        --arg worker_tab_id "$worker_tab" \
+        --arg status "$status" \
+        '{started: true, resumed: true, owner_pane_id: $owner_pane_id, worker_pane_id: $worker_pane_id, worker_tab_id: $worker_tab_id, agent: "codex", status: $status}'
+      return 0
+    fi
+    emit_start_failure "$pane" "$worker_tab" false agent_kind_mismatch \
+      "pane already hosts agent kind $agent_kind"
+    return 1
+  fi
+  error_output=$(<"$error_file")
+  error_code=$(json_error_code "$error_output")
+  if [[ $error_code != agent_not_found ]]; then
+    error_message=$(json_error_message "$error_output")
+    [[ -n $error_code ]] || error_code=agent_get_failed
+    [[ -n $error_message ]] || error_message=$error_output
+    emit_start_failure "$pane" "$worker_tab" false "$error_code" "$error_message"
+    return 1
+  fi
+
+  launch_worker "$label" "$cwd" "$pane" "$worker_tab"
 }
 
 send_message() {
   local pane=
   local message=
+  local wait_ready=false
 
   while (($#)); do
     case $1 in
+      --wait-ready) wait_ready=true; shift ;;
       --pane) (($# >= 2)) || usage; pane=$2; shift 2 ;;
       --message) (($# >= 2)) || usage; message=$2; shift 2 ;;
       *) usage ;;
@@ -111,10 +284,72 @@ send_message() {
   message_bytes=$(LC_ALL=C printf '%s' "$message" | wc -c | tr -d '[:space:]')
   ((message_bytes <= MAX_MESSAGE_BYTES)) || die "message is $message_bytes bytes; write long content to a shared file and send its absolute path"
 
-  herdr pane get "$pane" >/dev/null
-  herdr pane send-text "$pane" "$message"
-  herdr pane send-keys "$pane" enter
-  jq -n --arg pane_id "$pane" --argjson bytes "$message_bytes" '{pane_id: $pane_id, sent: true, bytes: $bytes}'
+  local agent_info initial_status output error_file error_output error_code error_message status
+  error_file=$HELPER_TEMP_DIR/herdr-error.json
+  while :; do
+    if [[ $wait_ready == true ]]; then
+      if ! output=$(herdr agent wait "$pane" \
+        --until idle \
+        --until 'done' 2>"$error_file"); then
+        error_output=$(<"$error_file")
+        error_code=$(json_error_code "$error_output")
+        error_message=$(json_error_message "$error_output")
+        [[ -n $error_code ]] || error_code=agent_wait_failed
+        [[ -n $error_message ]] || error_message=$error_output
+        emit_prompt_failure "$pane" "$error_code" "$error_message"
+        return 1
+      fi
+    fi
+
+    if ! agent_info=$(herdr agent get "$pane" 2>"$error_file"); then
+      error_output=$(<"$error_file")
+      error_code=$(json_error_code "$error_output")
+      error_message=$(json_error_message "$error_output")
+      [[ -n $error_code ]] || error_code=agent_get_failed
+      [[ -n $error_message ]] || error_message=$error_output
+      emit_prompt_failure "$pane" "$error_code" "$error_message"
+      return 1
+    fi
+    initial_status=$(jq -er '.result.agent.agent_status' <<<"$agent_info")
+    case $initial_status in
+      idle|done) break ;;
+      *)
+        if [[ $wait_ready == true ]]; then
+          continue
+        fi
+        emit_prompt_failure "$pane" agent_not_idle \
+          "agent must be idle or done before a prompt can be accepted reliably" "$initial_status"
+        return 1
+        ;;
+    esac
+  done
+
+  if ! output=$(herdr agent prompt "$pane" "$message" \
+    --wait \
+    --until working \
+    --timeout "$PROMPT_TIMEOUT_MS" 2>"$error_file"); then
+    error_output=$(<"$error_file")
+    error_code=$(json_error_code "$error_output")
+    error_message=$(json_error_message "$error_output")
+    [[ -n $error_code ]] || error_code=agent_prompt_failed
+    [[ -n $error_message ]] || error_message=$error_output
+    emit_prompt_failure "$pane" "$error_code" "$error_message" "$initial_status"
+    return 1
+  fi
+
+  status=$(jq -er '.result.agent.agent_status' <<<"$output")
+  if [[ $status != working ]]; then
+    emit_prompt_failure "$pane" agent_prompt_not_working \
+      "agent prompt returned without the required working status" "$status"
+    return 1
+  fi
+  jq -n \
+    --arg pane_id "$pane" \
+    --arg initial_status "$initial_status" \
+    --arg status "$status" \
+    --argjson waited_for_ready "$wait_ready" \
+    --argjson bytes "$message_bytes" \
+    '{accepted: true, pane_id: $pane_id, initial_status: $initial_status, status: $status, waited_for_ready: $waited_for_ready, bytes: $bytes}'
 }
 
 show_status() {
@@ -133,12 +368,14 @@ show_status() {
 
 main() {
   require_herdr
+  init_temp_dir
   (($#)) || usage
 
   local command=$1
   shift
   case $command in
     start) start_worker "$@" ;;
+    resume) resume_worker "$@" ;;
     send) send_message "$@" ;;
     status) show_status "$@" ;;
     *) usage ;;
