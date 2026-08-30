@@ -19,17 +19,57 @@ codex() {
   :
 }
 
+git() {
+  printf 'git %s\n' "$*" >>"$TEST_TMP/calls"
+  case "$HERDR_FAKE_SCENARIO:$3:$4" in
+    *:check-ref-format:--branch)
+      return 0
+      ;;
+    start-existing:branch:--show-current)
+      printf '%s\n' hindsight-pgrooga
+      ;;
+    start-mismatch:branch:--show-current)
+      printf '%s\n' other-work
+      ;;
+    *:branch:--show-current)
+      printf '%s\n' main
+      ;;
+    *:symbolic-ref:--quiet)
+      printf '%s\n' origin/main
+      ;;
+    *:status:--porcelain)
+      ;;
+    start-branch-exists:show-ref:--verify)
+      return 0
+      ;;
+    *:show-ref:--verify)
+      return 1
+      ;;
+    *:switch:-c)
+      ;;
+    *)
+      printf 'unexpected git call: %s\n' "$*" >&2
+      return 1
+      ;;
+  esac
+}
+
+og() {
+  printf 'og %s\n' "$*" >>"$TEST_TMP/calls"
+  [[ $* == pull ]] || return 1
+}
+
 herdr() {
   printf '%s\n' "$*" >>"$TEST_TMP/calls"
   case "$HERDR_FAKE_SCENARIO:$1:$2" in
-    start:tab:create)
-      printf '%s\n' '{"result":{"tab":{"tab_id":"w2:t2"},"root_pane":{"pane_id":"w2:p2"}}}'
-      ;;
     start-tab-failure:tab:create)
       printf '%s\n' '{"id":"cli:tab:create","error":{"code":"workspace_not_found","message":"workspace missing"}}' >&2
       return 1
       ;;
-    start:agent:start)
+    start*:tab:create)
+      printf '%s\n' '{"result":{"tab":{"tab_id":"w2:t2"},"root_pane":{"pane_id":"w2:p2"}}}'
+      ;;
+    start*:agent:start)
       local count=0
       [[ ! -f $TEST_TMP/start-count ]] || count=$(<"$TEST_TMP/start-count")
       count=$((count + 1))
@@ -46,8 +86,11 @@ herdr() {
     send-done:agent:get)
       printf '%s\n' '{"result":{"agent":{"agent_status":"done","agent":"codex"}}}'
       ;;
-    send-working:agent:get)
+    send-working:agent:get|steer-success:agent:get)
       printf '%s\n' '{"result":{"agent":{"agent_status":"working","agent":"codex"}}}'
+      ;;
+    steer-idle:agent:get)
+      printf '%s\n' '{"result":{"agent":{"agent_status":"idle","agent":"codex"}}}'
       ;;
     send-wait-ready:agent:wait)
       printf '%s\n' '{"result":{"agent":{"agent_status":"idle","agent":"codex"}}}'
@@ -56,6 +99,9 @@ herdr() {
       printf '%s\n' '{"result":{"agent":{"agent_status":"idle","agent":"codex"}}}'
       ;;
     send-success:agent:prompt|send-done:agent:prompt|send-wait-ready:agent:prompt)
+      printf '%s\n' '{"result":{"agent":{"agent_status":"working","agent":"codex"}}}'
+      ;;
+    steer-success:agent:prompt)
       printf '%s\n' '{"result":{"agent":{"agent_status":"working","agent":"codex"}}}'
       ;;
     send-stalled:agent:prompt)
@@ -81,22 +127,66 @@ herdr() {
   esac
 }
 
-export -f codex herdr
+export -f codex git og herdr
 export HERDR_ENV=1 HERDR_WORKSPACE_ID=w1 HERDR_PANE_ID=w1:p1 TEST_TMP
 
 HERDR_FAKE_SCENARIO=start
 export HERDR_FAKE_SCENARIO
-start_output=$(bash "$HELPER" start --cwd "$TEST_TMP")
+start_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
 [[ $(jq -r '.started' <<<"$start_output") == true ]] || fail "start did not succeed"
 [[ $(jq -r '.worker_pane_id' <<<"$start_output") == w2:p2 ]] || fail "start returned wrong pane"
 [[ $(<"$TEST_TMP/start-count") == 3 ]] || fail "start did not retry busy twice"
 [[ $(grep -c '^tab create ' "$TEST_TMP/calls") == 1 ]] || fail "start created more than one tab"
+grep -Fq "og pull" "$TEST_TMP/calls" || fail "start did not pull the default branch"
+grep -Fq "git -C $TEST_TMP switch -c hindsight-pgrooga" "$TEST_TMP/calls" || \
+  fail "start did not create the requested branch"
+grep -Fq "tab create --workspace w1 --cwd $TEST_TMP --label hindsight-pgrooga --no-focus" "$TEST_TMP/calls" || \
+  fail "start did not use the branch name as the tab label"
+grep -Fq "agent start hindsight-pgrooga --kind codex --pane w2:p2 --timeout 30000 -- -C $TEST_TMP -m gpt-5.6-luna -c model_reasoning_effort=\"max\"" "$TEST_TMP/calls" || \
+  fail "start did not pin the Luna model with max reasoning"
+
+: >"$TEST_TMP/calls"
+HERDR_FAKE_SCENARIO=start-existing
+export HERDR_FAKE_SCENARIO
+existing_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
+[[ $(jq -r '.started' <<<"$existing_output") == true ]] || fail "matching feature branch did not start"
+if grep -q '^og pull$\| switch -c ' "$TEST_TMP/calls"; then
+  fail "matching feature branch was pulled or recreated"
+fi
+
+: >"$TEST_TMP/calls"
+HERDR_FAKE_SCENARIO=start-mismatch
+export HERDR_FAKE_SCENARIO
+set +e
+(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga) >"$TEST_TMP/mismatch-output" 2>"$TEST_TMP/mismatch-error"
+mismatch_status=$?
+set -e
+[[ $mismatch_status == 1 ]] || fail "mismatched feature branch did not fail"
+grep -Fq 'current branch other-work does not match worker name hindsight-pgrooga' "$TEST_TMP/mismatch-error" || \
+  fail "mismatched branch failure was not actionable"
+if grep -q '^tab create ' "$TEST_TMP/calls"; then
+  fail "mismatched branch created a tab"
+fi
+
+: >"$TEST_TMP/calls"
+HERDR_FAKE_SCENARIO=start-branch-exists
+export HERDR_FAKE_SCENARIO
+set +e
+(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga) >"$TEST_TMP/exists-output" 2>"$TEST_TMP/exists-error"
+exists_status=$?
+set -e
+[[ $exists_status == 1 ]] || fail "existing target branch did not fail"
+grep -Fq 'branch already exists: hindsight-pgrooga' "$TEST_TMP/exists-error" || \
+  fail "existing target branch failure was not actionable"
+if grep -q '^og pull$\|^tab create ' "$TEST_TMP/calls"; then
+  fail "existing target branch pulled or created a tab"
+fi
 
 : >"$TEST_TMP/calls"
 HERDR_FAKE_SCENARIO=start-tab-failure
 export HERDR_FAKE_SCENARIO
 set +e
-tab_failure_output=$(bash "$HELPER" start --cwd "$TEST_TMP")
+tab_failure_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
 tab_failure_status=$?
 set -e
 [[ $tab_failure_status == 1 ]] || fail "tab failure did not fail"
@@ -142,6 +232,30 @@ set -e
 [[ $(jq -r '.error' <<<"$working_output") == agent_not_idle ]] || fail "working rejection had wrong error"
 if grep -q '^agent prompt ' "$TEST_TMP/calls"; then
   fail "working agent received an unverifiable prompt"
+fi
+
+: >"$TEST_TMP/calls"
+HERDR_FAKE_SCENARIO=steer-success
+export HERDR_FAKE_SCENARIO
+steer_output=$(bash "$HELPER" steer --pane w2:p2 --message 'also remove the internal hash')
+[[ $(jq -r '.accepted' <<<"$steer_output") == true ]] || fail "working agent did not accept steer"
+[[ $(jq -r '.mode' <<<"$steer_output") == steer ]] || fail "steer mode was not recorded"
+[[ $(jq -r '.initial_status' <<<"$steer_output") == working ]] || fail "steer initial status was not working"
+[[ $(jq -r '.status' <<<"$steer_output") == working ]] || fail "steer did not preserve working status"
+grep -q '^agent prompt w2:p2 also remove the internal hash$' "$TEST_TMP/calls" || \
+  fail "steer did not submit directly to the active Agent turn"
+
+: >"$TEST_TMP/calls"
+HERDR_FAKE_SCENARIO=steer-idle
+export HERDR_FAKE_SCENARIO
+set +e
+idle_steer_output=$(bash "$HELPER" steer --pane w2:p2 --message 'late requirement')
+idle_steer_status=$?
+set -e
+[[ $idle_steer_status == 1 ]] || fail "idle agent steer was not rejected"
+[[ $(jq -r '.error' <<<"$idle_steer_output") == agent_not_working ]] || fail "idle steer rejection had wrong error"
+if grep -q '^agent prompt ' "$TEST_TMP/calls"; then
+  fail "idle agent received a steer"
 fi
 
 : >"$TEST_TMP/calls"
