@@ -10,9 +10,9 @@ Use one owner and one Codex worker to implement an existing spec. The worker run
 
 ## 1. Prepare the run
 
-1. Require `HERDR_ENV=1` and the Herdr workspace, tab, and pane variables.
+1. Require the exact Herdr variables `HERDR_ENV=1`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, and `HERDR_PANE_ID`. When diagnosing their presence, inspect those exact names; a prefix check that expects `HERDR_WORKSPACE=` or `HERDR_PANE=` does not test the injected `_ID` variables.
 2. Read the named `.scratch/<feature>/spec.md` and every ticket under its `issues/` directory.
-3. Record the current branch and starting `HEAD`. Require a clean tracked worktree; preserve ignored or untracked planning files.
+3. Require a clean tracked worktree; preserve ignored or untracked planning files.
 4. Build the dependency order from ticket numbers, statuses, and `Blocked by:` fields.
 5. Resolve absolute paths to this skill's `scripts/herdr-worker.sh`, `implement/SKILL.md`, and `code-review/SKILL.md`.
 
@@ -20,18 +20,24 @@ Use absolute paths in the dispatch. Pass long context by file path instead of pa
 
 ## 2. Start the worker tab
 
-Run the helper from this skill directory:
+From the project workspace, pass the feature name as the only start argument:
 
 ```sh
-bash <orc-impl-dir>/scripts/herdr-worker.sh start --label worker --cwd "$PWD"
+bash <orc-impl-dir>/scripts/herdr-worker.sh start <feature-name>
 ```
 
-The helper creates one separate tab without taking focus, starts Codex in the requested working directory using the user's Codex configuration, and returns the owner pane ID, worker pane ID, and worker tab ID. It waits for the new pane's shell by retrying `agent_pane_busy` against that same pane; it never creates a second worker to recover a startup race. Retain those opaque IDs for the whole run. Use the helper for all owner-worker messages.
+The helper uses the current directory as the worker workspace and the feature name as both branch name and worker label. On the repository's default branch, it requires a clean tracked worktree, runs `og pull`, creates the named branch, and only then creates the Herdr tab. If the named branch already exists, it fails before pulling or creating a tab. On a feature branch, the current branch must already equal the feature name. After startup succeeds, record the current branch and starting `HEAD` as the fixed point for implementation and review.
+
+The helper creates one separate tab without taking focus, starts Codex with `gpt-5.6-luna` at `max` reasoning, and returns the owner pane ID, worker pane ID, and worker tab ID. It waits for the new pane's shell by retrying `agent_pane_busy` against that same pane; it never creates a second worker to recover a startup race. Retain those opaque IDs for the whole run. Use the helper's `send` and `steer` commands for all owner-worker messages.
+
+Before the initial dispatch, treat `bash <helper> status --pane <worker-pane-id>` as the readiness check. A `started: true` response followed by `agent_not_found` means the launched Codex exited during startup (for example, after a self-update); preserve that pane and use `resume --pane <worker-pane-id> --label <feature-name>`, then repeat the status check. Do not create a replacement tab.
 
 If startup exhausts its bounded retry, the helper returns `started: false`, the retained pane/tab IDs, a structured error, and whether the failure is recoverable. Preserve that tab and resume it instead of creating another:
 
 ```sh
-bash <orc-impl-dir>/scripts/herdr-worker.sh resume --pane <worker-pane-id>
+bash <orc-impl-dir>/scripts/herdr-worker.sh resume \
+  --pane <worker-pane-id> \
+  --label <feature-name>
 ```
 
 ## 3. Dispatch the whole spec
@@ -45,6 +51,18 @@ bash <orc-impl-dir>/scripts/herdr-worker.sh send \
 ```
 
 Keep the role boundary explicit: the owner follows `orc-impl`; the worker follows only `implement`. The bootstrap is the worker's orchestration contract and must directly provide the absolute helper path, owner pane ID, callback command, and callback success condition. Knowing only the owner pane ID is insufficient. The helper uses Herdr's Agent API to submit the prompt atomically and waits for an observed non-working-to-`working` transition. A low-level input acknowledgement or a helper result such as `sent: true` does not prove dispatch. Only `accepted: true` with `status: working` is a successful dispatch; otherwise preserve the worker and recover the reported error. Dispatch only while the target is `idle` or `done`, because prompting an already-working agent cannot prove which turn caused the observed state.
+
+### Steer the active worker
+
+When the user adds or corrects an in-scope requirement while the worker is `working`, steer that active turn instead of waiting for a new turn:
+
+```sh
+bash <orc-impl-dir>/scripts/herdr-worker.sh steer \
+  --pane <worker-pane-id> \
+  --message "<concise added requirement>"
+```
+
+`steer` is valid only while the target is `working`. It submits through Herdr's Agent API without waiting for a state transition, because the message belongs to the active turn. Treat only `accepted: true`, `mode: "steer"`, and `status: "working"` as successful acceptance. The worker's next completion report must account for the steered requirement; the report and owner verification establish implementation completion. Use `send`, not `steer`, to start initial work or a deterministic review-fix turn from `idle` or `done`.
 
 The worker owns routine implementation decisions and the complete implementation work. Tickets remain execution units: finish and verify each ticket's acceptance criteria before advancing, without pausing for owner acceptance. Follow the `implement` skill for repository work, verification, changed-LOC reporting, and commits.
 
@@ -72,6 +90,7 @@ After the completion callback, the owner:
 1. Reads the worker report and verifies the repository state against the pinned starting `HEAD` and every spec acceptance criterion.
 2. Invokes `code-review` against that fixed point and the complete spec. Review the whole integrated diff only after the worker's full-spec report.
 3. Triages review findings. Send deterministic fixes back to the same worker as one consolidated batch using `send --wait-ready`. End the owner turn again only after the helper confirms `accepted: true` and `status: working`, then wait for another explicitly accepted completion callback.
+   If the user adds an in-scope requirement while that fix turn is already `working`, deliver it with `steer` and require the next completion report to account for it.
 4. Ask the user about every judgement call whose correct resolution depends on unresolved external usage, prior deployment, retained data, public compatibility, cutover, or product behaviour. State what was checked, recommend the simplest supported choice, and identify migration or compatibility code that can be removed if the user confirms it is unnecessary.
 5. Repeat review after fixes until there are no merge blockers, or a real blocker or user decision remains.
 
