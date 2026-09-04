@@ -10,7 +10,7 @@ Use one owner and one Codex worker to implement an existing spec. The worker run
 
 ## 1. Prepare the run
 
-1. Require `HERDR_ENV=1` and the Herdr workspace, tab, and pane variables.
+1. Require the exact Herdr variables `HERDR_ENV=1`, `HERDR_WORKSPACE_ID`, `HERDR_TAB_ID`, and `HERDR_PANE_ID`. When diagnosing their presence, inspect those exact names; a prefix check that expects `HERDR_WORKSPACE=` or `HERDR_PANE=` does not test the injected `_ID` variables.
 2. Read the named `.scratch/<feature>/spec.md` and every ticket under its `issues/` directory.
 3. Require a clean tracked worktree; preserve ignored or untracked planning files.
 4. Build the dependency order from ticket numbers, statuses, and `Blocked by:` fields.
@@ -29,6 +29,8 @@ bash <orc-impl-dir>/scripts/herdr-worker.sh start <feature-name>
 The helper uses the current directory as the worker workspace and the feature name as both branch name and worker label. On the repository's default branch, it requires a clean tracked worktree, runs `og pull`, creates the named branch, and only then creates the Herdr tab. If the named branch already exists, it fails before pulling or creating a tab. On a feature branch, the current branch must already equal the feature name. After startup succeeds, record the current branch and starting `HEAD` as the fixed point for implementation and review.
 
 The helper creates one separate tab without taking focus, starts Codex with `gpt-5.6-luna` at `max` reasoning, and returns the owner pane ID, worker pane ID, and worker tab ID. It waits for the new pane's shell by retrying `agent_pane_busy` against that same pane; it never creates a second worker to recover a startup race. Retain those opaque IDs for the whole run. Use the helper's `send` and `steer` commands for all owner-worker messages.
+
+Before the initial dispatch, treat `bash <helper> status --pane <worker-pane-id>` as the readiness check. A `started: true` response followed by `agent_not_found` means the launched Codex exited during startup (for example, after a self-update); preserve that pane and use `resume --pane <worker-pane-id> --label <feature-name>`, then repeat the status check. Do not create a replacement tab.
 
 If startup exhausts its bounded retry, the helper returns `started: false`, the retained pane/tab IDs, a structured error, and whether the failure is recoverable. Preserve that tab and resume it instead of creating another:
 
