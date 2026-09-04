@@ -19,7 +19,7 @@ The researcher's job:
 
 1. Search FlickNote's `research` project for existing work on the question. Use relevant keywords with `note_find`, then read promising notes with `note_get`. Build on useful prior findings, but reverify factual claims that may be stale.
 2. Investigate the remaining question against **primary sources** — official docs, source code, specs, and first-party APIs. Follow every factual claim back to the source that owns it; distinguish verified facts, interpretation, speculation, and unknowns.
-3. Return an evidence packet to the main agent containing the verified findings and their direct source URLs, relevant prior-note material, conflicts, unknowns, and concrete follow-up leads. The packet is research input, not the final synthesis.
+3. Return an evidence packet to the main agent with separate verified findings and direct source URLs, interpretations or speculation, relevant prior-note material, conflicts, unknowns, and concrete follow-up leads. The packet is research input, not the final synthesis: do not write repository or FlickNote state, and leave recommendations to the main agent.
 
 After the researcher completes, the main agent must:
 
