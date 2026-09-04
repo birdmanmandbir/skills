@@ -32,9 +32,11 @@ baseline even when the card is not exported as a reusable component.
   revision-conflicted `SettingsScope.set` reloads Host state; that reload must
   not overwrite a dirty draft. Clean fields follow new Host values. Reset a
   draft only after a successful write or an explicit Discard action.
-- Match the native collapsed card structure: title, short description,
-  chevron, and an unsaved indicator. Put shared Discard and Save actions in the
-  footer instead of adding per-field controls or decorative sections.
+- Match the native card structure: one list-item shell, a two-line header,
+  chevron, body, and footer. Start collapsed, keep drafts while collapsed, mark
+  unsaved work in the header, and collapse after a Host-confirmed successful
+  save. Put shared Discard and Save actions in the footer instead of adding
+  per-field controls or decorative sections.
 - Keep the card spatially modest. Include only controls and concise guidance
   needed to operate them; omit plugin branding, banners, duplicate summaries,
   bespoke section chrome, and explanatory panels that make one plugin consume
@@ -47,8 +49,9 @@ baseline even when the card is not exported as a reusable component.
   edits, clean snapshots follow external updates, and Discard restores the
   latest saved baseline.
 - Compare the finished card directly with the current native card at the same
-  viewport and theme; matching tokens is insufficient when spacing, density,
-  or interaction hierarchy still differs.
+  viewport and theme in both collapsed and expanded states. Inspect computed
+  geometry and state colours; matching tokens, an injected stylesheet, or
+  generated class names are insufficient when presentation still differs.
 
 ## Styling
 
@@ -57,7 +60,9 @@ baseline even when the card is not exported as a reusable component.
   objects.
 - Use DSH semantic theme variables (`--dsw-alias-*`, `--dsw-specific-*`, and
   `--dsw-shadow-*`) for surfaces, borders, labels, interactive states, masks,
-  and shadows. Avoid literal light/dark colours and manual theme branching.
+  and shadows. Confirm each variable used by a visible state exists in the
+  target DSH version, because an unresolved custom property can silently expose
+  browser defaults. Avoid literal light/dark colours and manual theme branching.
 - Follow native interaction affordances: visible keyboard focus, sensible
   hover/disabled states, Escape and backdrop dismissal for modal previews,
   and `prefers-reduced-motion` for nonessential animation.
@@ -76,6 +81,9 @@ narrowly scoped plugin stylesheet imported as `?inline`, insert it through
 `ctx.effect`, and remove it in that effect's disposer. Do not add global theme
 overrides for a single tool or settings card.
 
+Use `dsh-plugin-verify` for packed, served, cold-browser, and live-deployment
+checks; this skill defines the UI contract rather than the delivery workflow.
+
 ## Primary references
 
 Use the current DSH source as the authority:
@@ -85,8 +93,10 @@ Use the current DSH source as the authority:
   `SkillRow.module.css` for a keyed tool-view CSS Module.
 - `packages/client/ui-settings-plugins/src/client/PluginCard.tsx`, its CSS
   Module, and its field components for native settings-card state and styling.
-- The `SettingsScope` implementation in `packages/client/runtime` for snapshot,
-  write, rejection, and revision-refresh behavior.
+- The `SettingsScope` contract and binder in
+  `packages/client/ui-settings/src/client/settings-contract.ts` and
+  `settings-scope.ts` for snapshot, write, rejection, and revision-refresh
+  behavior.
 - `packages/client/ui-attachment/src/ImageLightbox.tsx` and its CSS Module for
   image preview and lightbox behavior.
 - `packages/client/ui-theme/src/client/styles.ts` only when a genuinely global
