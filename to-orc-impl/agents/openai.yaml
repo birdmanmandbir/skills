@@ -1,0 +1,5 @@
+interface:
+  display_name: "To Orc Impl"
+  short_description: "Turn discussion into a documented implementation run"
+policy:
+  allow_implicit_invocation: false

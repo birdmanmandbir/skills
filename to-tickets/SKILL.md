@@ -14,7 +14,7 @@ Use the project-local Markdown tracker exclusively. Do NOT run `/setup-matt-poco
 
 ### 1. Gather context
 
-Work from whatever is already in the conversation context. If the user passes a reference (a spec path, an issue number or URL) as an argument, fetch it and read its full body and comments.
+Work from whatever is already in the conversation context. If the user passes a `.scratch/` spec path, read it. For an issue number, URL, or other external reference, ask them to provide its relevant content or turn it into a local spec; do not fetch it.
 
 ### 2. Explore the codebase (optional)
 
