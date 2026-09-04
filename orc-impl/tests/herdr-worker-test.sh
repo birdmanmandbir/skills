@@ -39,6 +39,9 @@ git() {
       ;;
     *:status:--porcelain)
       ;;
+    start-remote-branch-exists:show-ref:--verify)
+      [[ ${6:-} == refs/remotes/origin/hindsight-pgrooga ]]
+      ;;
     start-branch-exists:show-ref:--verify)
       return 0
       ;;
@@ -128,7 +131,7 @@ herdr() {
 }
 
 export -f codex git og herdr
-export HERDR_ENV=1 HERDR_WORKSPACE_ID=w1 HERDR_PANE_ID=w1:p1 TEST_TMP
+export HERDR_ENV=1 HERDR_WORKSPACE_ID=w1 HERDR_TAB_ID=w1:t1 HERDR_PANE_ID=w1:p1 TEST_TMP
 
 HERDR_FAKE_SCENARIO=start
 export HERDR_FAKE_SCENARIO
@@ -181,6 +184,29 @@ grep -Fq 'branch already exists: hindsight-pgrooga' "$TEST_TMP/exists-error" || 
 if grep -q '^og pull$\|^tab create ' "$TEST_TMP/calls"; then
   fail "existing target branch pulled or created a tab"
 fi
+
+: >"$TEST_TMP/calls"
+HERDR_FAKE_SCENARIO=start-remote-branch-exists
+export HERDR_FAKE_SCENARIO
+set +e
+(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga) >"$TEST_TMP/remote-exists-output" 2>"$TEST_TMP/remote-exists-error"
+remote_exists_status=$?
+set -e
+[[ $remote_exists_status == 1 ]] || fail "existing remote target branch did not fail"
+grep -Fq 'remote branch already exists: hindsight-pgrooga' "$TEST_TMP/remote-exists-error" || \
+  fail "remote target branch failure was not actionable"
+grep -Fq 'og pull' "$TEST_TMP/calls" || fail "remote target branch was not refreshed"
+if grep -q '^git -C .* switch -c \|^tab create ' "$TEST_TMP/calls"; then
+  fail "remote target branch was recreated or created a tab"
+fi
+
+set +e
+(unset HERDR_TAB_ID; bash "$HELPER" status --pane w2:p2) >"$TEST_TMP/missing-tab-output" 2>"$TEST_TMP/missing-tab-error"
+missing_tab_status=$?
+set -e
+[[ $missing_tab_status == 1 ]] || fail "missing Herdr tab ID did not fail"
+grep -Fq 'HERDR_TAB_ID is missing' "$TEST_TMP/missing-tab-error" || \
+  fail "missing Herdr tab ID failure was not actionable"
 
 : >"$TEST_TMP/calls"
 HERDR_FAKE_SCENARIO=start-tab-failure

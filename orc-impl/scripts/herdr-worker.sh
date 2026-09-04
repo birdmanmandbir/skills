@@ -22,6 +22,7 @@ require_command() {
 require_herdr() {
   [[ ${HERDR_ENV:-} == 1 ]] || die "not running inside Herdr (HERDR_ENV=1 is required)"
   [[ -n ${HERDR_WORKSPACE_ID:-} ]] || die "HERDR_WORKSPACE_ID is missing"
+  [[ -n ${HERDR_TAB_ID:-} ]] || die "HERDR_TAB_ID is missing"
   [[ -n ${HERDR_PANE_ID:-} ]] || die "HERDR_PANE_ID is missing"
   require_command herdr
   require_command jq
@@ -127,6 +128,9 @@ prepare_worker_branch() {
     fi
     require_command og
     (cd "$cwd" && og pull >&2)
+    if git -C "$cwd" show-ref --verify --quiet "refs/remotes/origin/$name"; then
+      die "remote branch already exists: $name; switch to it before starting the worker"
+    fi
     git -C "$cwd" switch -c "$name" >&2
     return 0
   fi
