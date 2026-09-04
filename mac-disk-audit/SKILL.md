@@ -1,6 +1,6 @@
 ---
 name: mac-disk-audit
-description: Use when a macOS disk is low, APFS free-space numbers seem inconsistent, or a user wants to find, rank, archive, or safely remove large files, caches, applications, developer artifacts, snapshots, or old Git repositories.
+description: Use when a macOS disk is low, APFS free-space numbers seem inconsistent, or a user wants to find, rank, or safely remove large files, caches, applications, developer artifacts, or snapshots.
 ---
 
 # Mac Disk Audit
@@ -17,7 +17,7 @@ Run the bundled non-destructive report first:
 ~/.agents/skills/mac-disk-audit/scripts/mac-space-audit
 ```
 
-Use `--fresh` to ignore results, `--no-cache` to disable cache writes, and `--stale-days N` to change the repository threshold. The script never deletes. For strict zero-write requests, use `df`, `diskutil`, and `du`; skip Git and Homebrew.
+Use `--fresh` to ignore results and `--no-cache` to disable cache writes. The script never deletes. For strict zero-write requests, use `df`, `diskutil`, and `du`; skip Homebrew.
 
 If fixed-path reporting is not enough, scan the home directory without crossing filesystems:
 
@@ -38,10 +38,9 @@ Apply these classes before recommending anything:
 | Rebuildable cache | Bun, uv, npm, Go modules, Qlty, Yarn, Playwright, Puppeteer | Prefer the tool's cleanup command |
 | App-managed data | Telegram, browsers, OrbStack, Steam | Use app storage or uninstall UI |
 | Personal data | Mail, Messages, notes, downloads | Never infer disposability from size |
-| Git archive candidate | Old repository | Check dirty files, untracked files, remotes, unpushed branches, and tags |
 | System-managed | APFS snapshots, Preboot, VM/swap, `/private/var` | Explain; do not force-delete |
 
-Treat `/` and `/System/Volumes/Data` as volumes sharing one APFS container. Do not add nested repositories, mounted simulators, OrbStack mounts, snapshots, or hard-linked caches as independent sizes.
+Treat `/` and `/System/Volumes/Data` as volumes sharing one APFS container. Do not add mounted simulators, OrbStack mounts, snapshots, or hard-linked caches as independent sizes.
 
 ## Clean Safely
 
@@ -54,25 +53,9 @@ Before any write:
 5. Quit an application before removing its cache or logs.
 6. After deletion, verify the path, confirm affected tools still run, and recheck `df -h /`.
 
-Treat deleting a cache or build directory and deleting its parent project as separate categories. If scope expands to the whole project, run the repository gate and obtain approval that explicitly names the whole directory.
+Treat deleting a cache or build directory and deleting its parent project as separate categories. If scope expands to a whole project, obtain approval that explicitly names the whole directory.
 
 Report measured bytes separately from the asynchronous APFS `df` change.
-
-## Git Archive Gate
-
-Never recommend deleting a repository until all checks pass:
-
-```bash
-git -C "$repo" status --short --branch
-git -C "$repo" remote -v
-git -C "$repo" log --branches --tags --not --remotes --oneline
-git -C "$repo" branch -avv
-git -C "$repo" show-ref --tags
-```
-
-A clean, fully pushed public clone can be recloned. Verify local tags against a reachable remote; remote-tracking branches do not prove tags were pushed. Missing or unreachable remotes, local changes, unpushed commits, or local-only tags require backup.
-
-The bundled report identifies old repositories that need this manual gate; it never labels one an archive candidate on its own.
 
 ## Common Mistakes
 
