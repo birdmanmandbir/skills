@@ -8,7 +8,11 @@ metadata:
 
 # Convert documents to Markdown
 
-Run the globally installed anydoc CLI with local-only OCR handling:
+Install the CLI once, then run it with local-only OCR handling:
+
+```bash
+npm install --global @firecrawl/anydoc
+```
 
 ```bash
 anydoc <file> --ocr reject              # Markdown to stdout

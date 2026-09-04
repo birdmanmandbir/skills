@@ -265,7 +265,7 @@ if [[ -d "$home/Code" ]] && command -v git >/dev/null 2>&1; then
       elif [[ -z "$remotes" || -n "$unpushed" ]]; then
         class="先备份再考虑"
       else
-        class="归档候选（需完整门禁）"
+        class="需完整门禁"
       fi
     fi
     save_repo_cache "$repo" "$class" "$last_date"

@@ -72,6 +72,8 @@ git -C "$repo" show-ref --tags
 
 A clean, fully pushed public clone can be recloned. Verify local tags against a reachable remote; remote-tracking branches do not prove tags were pushed. Missing or unreachable remotes, local changes, unpushed commits, or local-only tags require backup.
 
+The bundled report identifies old repositories that need this manual gate; it never labels one an archive candidate on its own.
+
 ## Common Mistakes
 
 - Reading `df -h /` as system files; the Data volume holds most bytes.
