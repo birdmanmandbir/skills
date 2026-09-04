@@ -1,0 +1,4 @@
+interface:
+  display_name: "Review Again"
+  short_description: "Decide whether another code review is warranted"
+  default_prompt: "Use $review-again to decide whether the post-review changes warrant another full code review."
