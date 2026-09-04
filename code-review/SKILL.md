@@ -10,7 +10,7 @@ Two-axis review of the diff between `HEAD` and the repository's default branch, 
 
 Both axes run as **parallel sub-agents** so they don't pollute each other's context, then this skill aggregates their findings.
 
-The issue tracker should have been provided to you — run `/setup-matt-pocock-skills` if `docs/agents/issue-tracker.md` is missing.
+The project-local Markdown tracker is `.scratch/`. Do not fetch a spec from a remote issue tracker.
 
 ## Process
 
@@ -35,10 +35,9 @@ Before going further, confirm the fixed point resolves (`git rev-parse <fixed-po
 
 Look for the originating spec, in this order:
 
-1. Issue references in the commit messages (`#123`, `Closes #45`, GitLab `!67`, etc.) — fetch via the workflow in `docs/agents/issue-tracker.md`.
-2. A path the user passed as an argument.
-3. A spec file under `docs/`, `specs/`, or `.scratch/` matching the branch name or feature.
-4. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
+1. A path the user passed as an argument.
+2. A spec file under `.scratch/` matching the branch name or feature.
+3. If nothing is found, ask the user where the spec is. If they say there isn't one, the **Spec** sub-agent will skip and report "no spec available".
 
 ### 3. Identify the standards sources
 
@@ -64,14 +63,16 @@ Each smell reads *what it is* → *how to fix*; match it against the diff:
 - **Middle Man** — a class or function that mostly just delegates onward. → cut it, call the real target direct.
 - **Refused Bequest** — a subclass or implementer that ignores or overrides most of what it inherits. → drop the inheritance, use composition.
 
-### 4. Select reviewer profiles and run both sub-agents in parallel
+### 4. Select named reviewers and run both sub-agents in parallel
 
-Model size is not a review-quality ordering. Use independent contexts, narrow evidence, and a task-appropriate reviewer rather than automatically choosing a model far stronger than the coder. Apply this default policy:
+Use independent contexts, narrow evidence, and a task-appropriate named reviewer. Apply this routing policy:
 
 | Change risk | Standards reviewer | Spec reviewer |
 | --- | --- | --- |
-| Normal | `luna` | `luna` |
-| High | `luna` | `selected` |
+| Normal | `standards_reviewer` | `spec_reviewer` |
+| High | `standards_reviewer` | `high_risk_spec_reviewer` |
+
+Spawn these custom agents by name. Their TOML files own model, reasoning, and sandbox settings; do not pass model or reasoning overrides. If a required named agent is unavailable, report a configuration blocker instead of substituting a generic agent.
 
 Treat a change as high risk when it materially changes authentication or authorization, owner isolation, money, persistence or migrations, transactions, concurrency, queues or delivery guarantees, state machines, cross-runtime contracts, or a broad architectural execution path. Make this technical classification yourself. A large diff alone raises review difficulty but does not automatically justify stronger models; first narrow the evidence supplied to each reviewer.
 
@@ -100,7 +101,7 @@ Give both reviewers this **evidence and proportionality discipline**:
 
 If the spec is missing, skip the Spec sub-agent and note this in the final report.
 
-**Focused adjudication** — do not run a third full review or ensemble reviewers. When a potential merge blocker remains materially uncertain, first use deterministic evidence when available. If model judgement is still required, send only that finding, its cited hunk, the governing requirement, and relevant test evidence to a fresh `selected` sub-agent. Keep the result under the finding's original axis; adjudication confirms or rejects evidence and never reranks Standards against Spec.
+**Focused adjudication** — do not run a third full review or ensemble reviewers. When a potential merge blocker remains materially uncertain, first use deterministic evidence when available. If model judgement is still required, send only that finding, its cited hunk, the governing requirement, and relevant test evidence to a fresh named reviewer: `standards_reviewer` for a Standards finding, or the Spec reviewer selected by the run's risk class for a Spec finding. Keep the result under the finding's original axis; adjudication confirms or rejects evidence and never reranks Standards against Spec.
 
 ### 5. Aggregate
 
