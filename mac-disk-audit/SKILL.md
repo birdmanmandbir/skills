@@ -54,6 +54,8 @@ Before any write:
 5. Quit an application before removing its cache or logs.
 6. After deletion, verify the path, confirm affected tools still run, and recheck `df -h /`.
 
+Treat deleting a cache or build directory and deleting its parent project as separate categories. If scope expands to the whole project, run the repository gate and obtain approval that explicitly names the whole directory.
+
 Report measured bytes separately from the asynchronous APFS `df` change.
 
 ## Git Archive Gate
@@ -63,11 +65,12 @@ Never recommend deleting a repository until all checks pass:
 ```bash
 git -C "$repo" status --short --branch
 git -C "$repo" remote -v
-git -C "$repo" log --branches --not --remotes --oneline
+git -C "$repo" log --branches --tags --not --remotes --oneline
 git -C "$repo" branch -avv
+git -C "$repo" show-ref --tags
 ```
 
-A clean, fully pushed public clone can be recloned. Missing remotes, local changes, or unpushed commits require backup.
+A clean, fully pushed public clone can be recloned. Verify local tags against a reachable remote; remote-tracking branches do not prove tags were pushed. Missing or unreachable remotes, local changes, unpushed commits, or local-only tags require backup.
 
 ## Common Mistakes
 
