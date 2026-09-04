@@ -12,7 +12,7 @@ Identify both:
 - the state covered by the most recent completed review; and
 - the code changes made after that review.
 
-Prefer a supplied before-ref, a commit or working-tree snapshot recorded during the review, or the changes made in the current conversation. A full branch diff does not by itself identify the post-review delta. If no completed review exists, use `$code-review` directly. If implementation changed but the post-review delta cannot be isolated reliably, choose one full re-review and label the missing baseline as the reason.
+Prefer a supplied before-ref, a commit or working-tree snapshot recorded during the review, or the changes made in the current conversation. A full branch diff does not by itself identify the post-review delta. If no completed review exists, tell the human that a full `$code-review` is required. If implementation changed but the post-review delta cannot be isolated reliably, choose one full re-review and label the missing baseline as the reason.
 
 ## Classify the changes
 
@@ -27,7 +27,7 @@ Treat a change as a **local repair** when it is the smallest direct fix for a re
 
 ## Choose the next action
 
-- If any review-invalidating change exists, state the concrete trigger and invoke `$code-review` once against the current complete branch state.
+- If any review-invalidating change exists, state the concrete trigger and tell the human to invoke `$code-review` against the current complete branch state.
 - If the delta contains only local repairs, verify each changed hunk against its originating finding and run the smallest relevant repository checks. Do not start a full review.
 - If there is no code or machine-consumed contract change, stop; another review has no expected value.
 
