@@ -69,8 +69,15 @@ herdr() {
       printf '%s\n' '{"id":"cli:tab:create","error":{"code":"workspace_not_found","message":"workspace missing"}}' >&2
       return 1
       ;;
+    start-metadata-failure:pane:report-metadata)
+      printf '%s\n' '{"id":"cli:pane:report-metadata","error":{"code":"metadata_unavailable","message":"metadata unavailable"}}' >&2
+      return 1
+      ;;
     start*:tab:create)
       printf '%s\n' '{"result":{"tab":{"tab_id":"w2:t2"},"root_pane":{"pane_id":"w2:p2"}}}'
+      ;;
+    start*:pane:report-metadata)
+      printf '%s\n' '{"result":{}}'
       ;;
     start*:agent:start)
       local count=0
@@ -143,10 +150,50 @@ start_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
 grep -Fq "og pull" "$TEST_TMP/calls" || fail "start did not pull the default branch"
 grep -Fq "git -C $TEST_TMP switch -c hindsight-pgrooga" "$TEST_TMP/calls" || \
   fail "start did not create the requested branch"
-grep -Fq "tab create --workspace w1 --cwd $TEST_TMP --label hindsight-pgrooga --no-focus" "$TEST_TMP/calls" || \
+grep -Fq "tab create --workspace w1 --cwd $TEST_TMP --label hindsight-pgrooga --env ORC_WORKER_ROLE=implementation-worker --no-focus" "$TEST_TMP/calls" || \
   fail "start did not use the branch name as the tab label"
+grep -Fq "pane report-metadata w2:p2 --source orc-impl --display-agent Implementation worker" "$TEST_TMP/calls" || \
+  fail "start did not report the Implementation worker identity"
 grep -Fq "agent start hindsight-pgrooga --kind codex --pane w2:p2 --timeout 30000 -- -C $TEST_TMP -m gpt-5.6-luna -c model_reasoning_effort=\"max\"" "$TEST_TMP/calls" || \
   fail "start did not pin the Luna model with max reasoning"
+
+: >"$TEST_TMP/calls"
+rm -f "$TEST_TMP/start-count"
+HERDR_FAKE_SCENARIO=start-metadata-failure
+export HERDR_FAKE_SCENARIO
+metadata_failure_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
+[[ $(jq -r '.started' <<<"$metadata_failure_output") == true ]] || \
+  fail "display metadata failure blocked worker startup"
+grep -Fq "pane report-metadata w2:p2 --source orc-impl --display-agent Implementation worker" "$TEST_TMP/calls" || \
+  fail "metadata failure scenario did not attempt the display report"
+
+: >"$TEST_TMP/calls"
+export ORC_WORKER_ROLE=implementation-worker
+HERDR_FAKE_SCENARIO=guard-start
+export HERDR_FAKE_SCENARIO
+set +e
+(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga) >"$TEST_TMP/guard-start-output" 2>"$TEST_TMP/guard-start-error"
+guard_start_status=$?
+set -e
+[[ $guard_start_status == 1 ]] || fail "marked worker start was not guarded"
+grep -Fq 'Implementation worker cannot invoke start' "$TEST_TMP/guard-start-error" || \
+  fail "start guard did not identify the blocked entrypoint"
+grep -Fq 'continue implementing the assigned spec' "$TEST_TMP/guard-start-error" || \
+  fail "start guard did not explain the implementation responsibility"
+grep -Fq 'Completion callback' "$TEST_TMP/guard-start-error" || \
+  fail "start guard did not explain the callback responsibility"
+[[ ! -s "$TEST_TMP/calls" ]] || fail "marked worker start caused a lifecycle side effect"
+
+: >"$TEST_TMP/calls"
+set +e
+bash "$HELPER" resume --pane w2:p2 >"$TEST_TMP/guard-resume-output" 2>"$TEST_TMP/guard-resume-error"
+guard_resume_status=$?
+set -e
+[[ $guard_resume_status == 1 ]] || fail "marked worker resume was not guarded"
+grep -Fq 'Implementation worker cannot invoke resume' "$TEST_TMP/guard-resume-error" || \
+  fail "resume guard did not identify the blocked entrypoint"
+[[ ! -s "$TEST_TMP/calls" ]] || fail "marked worker resume caused a lifecycle side effect"
+unset ORC_WORKER_ROLE
 
 : >"$TEST_TMP/calls"
 HERDR_FAKE_SCENARIO=start-existing
@@ -287,6 +334,7 @@ fi
 : >"$TEST_TMP/calls"
 HERDR_FAKE_SCENARIO=send-wait-ready
 export HERDR_FAKE_SCENARIO
+export ORC_WORKER_ROLE=implementation-worker
 callback_output=$(bash "$HELPER" send --wait-ready --pane w1:p1 --message 'IMPL_COMPLETE: report')
 [[ $(jq -r '.accepted' <<<"$callback_output") == true ]] || fail "wait-ready callback was not accepted"
 [[ $(jq -r '.waited_for_ready' <<<"$callback_output") == true ]] || fail "wait-ready result was not recorded"
@@ -294,6 +342,7 @@ grep -q '^agent wait w1:p1 --until idle --until done$' "$TEST_TMP/calls" || \
   fail "callback did not wait for owner readiness"
 grep -q '^agent prompt w1:p1 IMPL_COMPLETE: report --wait --until working --timeout 10000$' "$TEST_TMP/calls" || \
   fail "callback did not use the verified Agent API"
+unset ORC_WORKER_ROLE
 
 : >"$TEST_TMP/calls"
 HERDR_FAKE_SCENARIO=resume
