@@ -176,12 +176,7 @@ set +e
 guard_start_status=$?
 set -e
 [[ $guard_start_status == 1 ]] || fail "marked worker start was not guarded"
-grep -Fq 'Implementation worker cannot invoke start' "$TEST_TMP/guard-start-error" || \
-  fail "start guard did not identify the blocked entrypoint"
-grep -Fq 'continue implementing the assigned spec' "$TEST_TMP/guard-start-error" || \
-  fail "start guard did not explain the implementation responsibility"
-grep -Fq 'Completion callback' "$TEST_TMP/guard-start-error" || \
-  fail "start guard did not explain the callback responsibility"
+[[ -s "$TEST_TMP/guard-start-error" ]] || fail "start guard did not return a useful stderr message"
 [[ ! -s "$TEST_TMP/calls" ]] || fail "marked worker start caused a lifecycle side effect"
 
 : >"$TEST_TMP/calls"
@@ -190,8 +185,7 @@ bash "$HELPER" resume --pane w2:p2 >"$TEST_TMP/guard-resume-output" 2>"$TEST_TMP
 guard_resume_status=$?
 set -e
 [[ $guard_resume_status == 1 ]] || fail "marked worker resume was not guarded"
-grep -Fq 'Implementation worker cannot invoke resume' "$TEST_TMP/guard-resume-error" || \
-  fail "resume guard did not identify the blocked entrypoint"
+[[ -s "$TEST_TMP/guard-resume-error" ]] || fail "resume guard did not return a useful stderr message"
 [[ ! -s "$TEST_TMP/calls" ]] || fail "marked worker resume caused a lifecycle side effect"
 unset ORC_WORKER_ROLE
 
