@@ -8,6 +8,10 @@ readonly START_ATTEMPTS=20
 readonly START_RETRY_DELAY_SECONDS=0.5
 readonly WORKER_MODEL=gpt-5.6-luna
 readonly WORKER_REASONING_EFFORT=max
+readonly WORKER_ROLE_ENV=ORC_WORKER_ROLE
+readonly IMPLEMENTATION_WORKER_ROLE=implementation-worker
+readonly WORKER_DISPLAY_AGENT='Implementation worker'
+readonly METADATA_SOURCE=orc-impl
 HELPER_TEMP_DIR=
 
 die() {
@@ -88,6 +92,13 @@ emit_prompt_failure() {
     --arg message "$message" \
     --arg status "$status" \
     '{accepted: false, pane_id: $pane_id, error: $error, message: $message} + if $status == "" then {} else {status: $status} end'
+}
+
+guard_incompatible_entrypoint() {
+  local command=$1
+
+  [[ ${ORC_WORKER_ROLE:-} == "$IMPLEMENTATION_WORKER_ROLE" ]] || return 0
+  die "role guard: Implementation worker cannot invoke $command to start or recover another worker; continue implementing the assigned spec and use the Completion callback to coordinate with the Owner"
 }
 
 resolve_default_branch() {
@@ -186,6 +197,22 @@ launch_worker() {
   return 1
 }
 
+report_worker_identity() {
+  local pane=$1
+  local error_file=$HELPER_TEMP_DIR/metadata-error.json
+  local error_message
+
+  if ! herdr pane report-metadata "$pane" \
+    --source "$METADATA_SOURCE" \
+    --display-agent "$WORKER_DISPLAY_AGENT" \
+    >/dev/null 2>"$error_file"; then
+    error_message=$(<"$error_file")
+    [[ -n $error_message ]] || error_message=display_metadata_unavailable
+    printf 'herdr-worker: unable to report Implementation worker identity: %s; continuing\n' \
+      "$error_message" >&2
+  fi
+}
+
 start_worker() {
   (($# == 1)) || usage
   local name=$1
@@ -202,6 +229,7 @@ start_worker() {
     --workspace "$HERDR_WORKSPACE_ID" \
     --cwd "$cwd" \
     --label "$name" \
+    --env "$WORKER_ROLE_ENV=$IMPLEMENTATION_WORKER_ROLE" \
     --no-focus 2>"$error_file"); then
     error_output=$(<"$error_file")
     error_code=$(json_error_code "$error_output")
@@ -221,6 +249,7 @@ start_worker() {
       "tab create response did not include a worker tab ID"
     return 1
   fi
+  report_worker_identity "$worker_pane"
   launch_worker "$name" "$cwd" "$worker_pane" "$worker_tab"
 }
 
@@ -478,11 +507,14 @@ show_status() {
 }
 
 main() {
-  require_herdr
-  init_temp_dir
   (($#)) || usage
 
   local command=$1
+  if [[ $command == start || $command == resume ]]; then
+    guard_incompatible_entrypoint "$command"
+  fi
+  require_herdr
+  init_temp_dir
   shift
   case $command in
     start) start_worker "$@" ;;
