@@ -1,0 +1,4 @@
+interface:
+  display_name: "macOS Bundle Signing"
+  short_description: "Safely patch and re-sign existing macOS app bundles"
+  default_prompt: "Use $macos-bundle-signing to safely patch and validate this macOS app bundle."
