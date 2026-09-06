@@ -1,7 +1,6 @@
 ---
 name: orc-impl
 description: Orchestrate one existing project-local spec through a persistent Implementation worker and whole-spec code review.
-disable-model-invocation: true
 ---
 
 # Orchestrate implementation

@@ -1,7 +1,6 @@
 ---
 name: to-spec
 description: Turn the current conversation into a project-local draft spec, then run the shared spec self-review to revise it and determine readiness.
-disable-model-invocation: true
 ---
 
 Turn the current conversation and codebase context into one implementation-ready spec. Do not restart discovery as an interview. Draft from the known context, then use the shared spec review workflow to revise it and determine readiness.

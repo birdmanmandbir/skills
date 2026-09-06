@@ -1,7 +1,6 @@
 ---
 name: steam-deck-recording-export
 description: Export Steam Game Recording clips from a Steam Deck over SSH. Use when asked to retrieve a Steam or non-Steam shortcut recording, discover Steam userdata account IDs, select the newest clip, or turn Steam gamerecordings DASH fragments into a playable local MP4.
-compatibility: SSH access to the Steam Deck plus ffmpeg and ffprobe on the Deck and local machine.
 ---
 
 # Steam Deck Recording Export
@@ -10,6 +9,7 @@ Export one selected Steam Game Recording as a local H.264/AAC MP4. Steam stores 
 
 ## Inputs and safeguards
 
+- Require SSH access to the Steam Deck plus `ffmpeg` and `ffprobe` on the Deck and local machine.
 - Use the SSH host the user gives. `steamdeck` is only a default when the user names that configured host.
 - Use the current directory as the output location unless the user specifies another one.
 - Treat `userdata/<account-id>` as a Steam **AccountID**, not a 17-digit SteamID64. Use the directory name verbatim.

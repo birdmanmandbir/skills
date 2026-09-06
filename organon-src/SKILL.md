@@ -1,6 +1,6 @@
 ---
 name: organon-src
-description: Use src to read and edit source files with symbol-aware navigation. Run `src <file>` for a tree, then `-s <id>` to read a symbol. Subcommands replace, insert, delete, comment modify symbols in-place. Use `src edit` for raw text replacement on any file type.
+description: Use src to read and edit source files with symbol-aware navigation. Run `src FILE` for a tree, then `-s ID` to read a symbol. Subcommands replace, insert, delete, and comment modify symbols in place. Use `src edit` for raw text replacement on any file type.
 ---
 
 # src — Symbol-Aware Source File Reading and Editing
