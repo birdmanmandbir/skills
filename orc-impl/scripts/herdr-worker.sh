@@ -47,7 +47,7 @@ usage() {
   cat >&2 <<'EOF'
 usage:
   herdr-worker.sh start NAME
-  herdr-worker.sh resume --pane PANE_ID [--label LABEL]
+  herdr-worker.sh resume --pane PANE_ID
   herdr-worker.sh send [--wait-ready] --pane PANE_ID --message TEXT
   herdr-worker.sh steer --pane PANE_ID --message TEXT
   herdr-worker.sh status --pane PANE_ID
@@ -150,6 +150,16 @@ prepare_worker_branch() {
     die "current branch $current_branch does not match worker name $name"
 }
 
+worker_label() {
+  local name=$1
+  local cwd=$2
+  local root
+
+  root=$(git -C "$cwd" rev-parse --show-toplevel) || \
+    die "cannot determine repository root in $cwd"
+  printf '%s-%s\n' "$name" "$(basename "$root")"
+}
+
 launch_worker() {
   local label=$1
   local cwd=$2
@@ -222,13 +232,15 @@ start_worker() {
   require_command git
   require_command codex
   prepare_worker_branch "$name" "$cwd"
+  local label
+  label=$(worker_label "$name" "$cwd")
 
   local created worker_pane worker_tab error_file error_output error_code error_message
   error_file=$HELPER_TEMP_DIR/herdr-error.json
   if ! created=$(herdr tab create \
     --workspace "$HERDR_WORKSPACE_ID" \
     --cwd "$cwd" \
-    --label "$name" \
+    --label "$label" \
     --env "$WORKER_ROLE_ENV=$IMPLEMENTATION_WORKER_ROLE" \
     --no-focus 2>"$error_file"); then
     error_output=$(<"$error_file")
@@ -250,17 +262,15 @@ start_worker() {
     return 1
   fi
   report_worker_identity "$worker_pane"
-  launch_worker "$name" "$cwd" "$worker_pane" "$worker_tab"
+  launch_worker "$label" "$cwd" "$worker_pane" "$worker_tab"
 }
 
 resume_worker() {
   local pane=
-  local label=worker
 
   while (($#)); do
     case $1 in
       --pane) (($# >= 2)) || usage; pane=$2; shift 2 ;;
-      --label) (($# >= 2)) || usage; label=$2; shift 2 ;;
       *) usage ;;
     esac
   done
@@ -340,6 +350,10 @@ resume_worker() {
     return 1
   fi
 
+  local branch label
+  branch=$(git -C "$cwd" branch --show-current)
+  [[ -n $branch ]] || die "detached HEAD is not supported: $cwd"
+  label=$(worker_label "$branch" "$cwd")
   launch_worker "$label" "$cwd" "$pane" "$worker_tab"
 }
 

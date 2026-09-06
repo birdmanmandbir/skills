@@ -1,7 +1,6 @@
 ---
 name: to-tickets
 description: Break a plan, spec, or the current conversation into project-local Markdown tickets, each declaring its blocking edges.
-disable-model-invocation: true
 ---
 
 # To Tickets
