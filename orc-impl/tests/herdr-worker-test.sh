@@ -39,6 +39,9 @@ git() {
       ;;
     *:status:--porcelain)
       ;;
+    *:rev-parse:--show-toplevel)
+      printf '%s\n' "${2}"
+      ;;
     start-remote-branch-exists:show-ref:--verify)
       [[ ${6:-} == refs/remotes/origin/hindsight-pgrooga ]]
       ;;
@@ -143,6 +146,7 @@ export HERDR_ENV=1 HERDR_WORKSPACE_ID=w1 HERDR_TAB_ID=w1:t1 HERDR_PANE_ID=w1:p1 
 HERDR_FAKE_SCENARIO=start
 export HERDR_FAKE_SCENARIO
 start_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
+repository_name=$(basename "$TEST_TMP")
 [[ $(jq -r '.started' <<<"$start_output") == true ]] || fail "start did not succeed"
 [[ $(jq -r '.worker_pane_id' <<<"$start_output") == w2:p2 ]] || fail "start returned wrong pane"
 [[ $(<"$TEST_TMP/start-count") == 3 ]] || fail "start did not retry busy twice"
@@ -150,11 +154,11 @@ start_output=$(cd "$TEST_TMP" && bash "$HELPER" start hindsight-pgrooga)
 grep -Fq "og pull" "$TEST_TMP/calls" || fail "start did not pull the default branch"
 grep -Fq "git -C $TEST_TMP switch -c hindsight-pgrooga" "$TEST_TMP/calls" || \
   fail "start did not create the requested branch"
-grep -Fq "tab create --workspace w1 --cwd $TEST_TMP --label hindsight-pgrooga --env ORC_WORKER_ROLE=implementation-worker --no-focus" "$TEST_TMP/calls" || \
-  fail "start did not use the branch name as the tab label"
+grep -Fq "tab create --workspace w1 --cwd $TEST_TMP --label hindsight-pgrooga-$repository_name --env ORC_WORKER_ROLE=implementation-worker --no-focus" "$TEST_TMP/calls" || \
+  fail "start did not derive the repository-qualified tab label"
 grep -Fq "pane report-metadata w2:p2 --source orc-impl --display-agent Implementation worker" "$TEST_TMP/calls" || \
   fail "start did not report the Implementation worker identity"
-grep -Fq "agent start hindsight-pgrooga --kind codex --pane w2:p2 --timeout 30000 -- -C $TEST_TMP -m gpt-5.6-luna -c model_reasoning_effort=\"max\"" "$TEST_TMP/calls" || \
+grep -Fq "agent start hindsight-pgrooga-$repository_name --kind codex --pane w2:p2 --timeout 30000 -- -C $TEST_TMP -m gpt-5.6-luna -c model_reasoning_effort=\"max\"" "$TEST_TMP/calls" || \
   fail "start did not pin the Luna model with max reasoning"
 
 : >"$TEST_TMP/calls"

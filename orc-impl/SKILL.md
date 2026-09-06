@@ -28,20 +28,19 @@ From the project workspace, pass the feature name as the only start argument:
 bash <orc-impl-dir>/scripts/herdr-worker.sh start <feature-name>
 ```
 
-The helper uses the current directory as the Implementation worker workspace and the feature name as both branch name and Implementation worker label. On the repository's default branch, it requires a clean tracked worktree, runs `og pull`, creates the named branch, and only then creates the Herdr tab. If the named branch already exists, it fails before pulling or creating a tab. On a feature branch, the current branch must already equal the feature name. After startup succeeds, record the current branch and starting `HEAD` as the fixed point for implementation and review.
+The helper uses the current directory as the Implementation worker workspace and the feature name as the branch name. On the repository's default branch, it requires a clean tracked worktree, runs `og pull`, creates the named branch, and only then creates the Herdr tab. If the named branch already exists, it fails before pulling or creating a tab. On a feature branch, the current branch must already equal the feature name. After startup succeeds, record the current branch and starting `HEAD` as the fixed point for implementation and review.
 
 The helper creates one separate tab without taking focus, injects the fixed `ORC_WORKER_ROLE=implementation-worker` marker, and reports the pane's display identity as `Implementation worker` on a best-effort basis. A display-metadata failure does not block startup. It then starts Codex with `gpt-5.6-luna` at `max` reasoning and returns the Owner pane ID, Implementation worker pane ID, and Implementation worker tab ID. It waits for the new pane's shell by retrying `agent_pane_busy` against that same pane; it never creates a second Implementation worker to recover a startup race. Retain those opaque IDs for the whole run. Use the helper's `send` and `steer` commands for all Owner–Implementation worker messages.
 
 If a marked Implementation worker invokes `start` or `resume`, the helper returns a role guard before any repository or Herdr lifecycle operation. The Implementation worker must continue the assigned implementation and reserve coordination for its Completion callback; `send` remains available for that callback.
 
-Before the initial dispatch, treat `bash <helper> status --pane <implementation-worker-pane-id>` as the readiness check. A `started: true` response followed by `agent_not_found` means the Implementation worker exited during startup (for example, after a self-update); preserve that pane and use `resume --pane <implementation-worker-pane-id> --label <feature-name>`, then repeat the status check. Do not create a replacement tab.
+Before the initial dispatch, treat `bash <helper> status --pane <implementation-worker-pane-id>` as the readiness check. A `started: true` response followed by `agent_not_found` means the Implementation worker exited during startup (for example, after a self-update); preserve that pane and use `resume --pane <implementation-worker-pane-id>`, then repeat the status check. Do not create a replacement tab.
 
 If startup exhausts its bounded retry, the helper returns `started: false`, the retained pane/tab IDs, a structured error, and whether the failure is recoverable. Preserve that tab and resume the same Implementation worker instead of creating another Implementation worker:
 
 ```sh
 bash <orc-impl-dir>/scripts/herdr-worker.sh resume \
-  --pane <implementation-worker-pane-id> \
-  --label <feature-name>
+  --pane <implementation-worker-pane-id>
 ```
 
 ## 3. Dispatch the whole spec
